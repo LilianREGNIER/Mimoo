@@ -1,7 +1,7 @@
 {
-  "version": 1,
+  "version": 2,
   "sheetWidth": 256,
-  "sheetHeight": 384,
+  "sheetHeight": 512,
   "frameWidth": 64,
   "frameHeight": 64,
   "columns": 4,
@@ -12,73 +12,202 @@
     "eat": 2,
     "happy": 3,
     "sleep": 4,
-    "sad": 5
+    "sad": 5,
+    "hungry": 6,
+    "need_cuddle": 7
   },
   "forms": [
     {
       "id": "egg",
       "stage": "egg",
       "stageIndex": 0,
-      "name": "Œuf Mystère",
+      "lineage": null,
+      "name": "Œuf Mystique",
       "file": "egg.png",
       "path": "assets/sprites/egg.png"
     },
     {
-      "id": "baby_blob",
+      "id": "baby_aqua",
       "stage": "baby",
       "stageIndex": 1,
-      "name": "Bébé Blob",
-      "file": "baby_blob.png",
-      "path": "assets/sprites/baby_blob.png"
+      "lineage": "aqua",
+      "name": "P'tit Goutte",
+      "file": "baby_aqua.png",
+      "path": "assets/sprites/baby_aqua.png"
     },
     {
-      "id": "child_sprout",
+      "id": "child_aqua",
       "stage": "child",
       "stageIndex": 2,
-      "name": "Jeune Pousse",
-      "file": "child_sprout.png",
-      "path": "assets/sprites/child_sprout.png"
+      "lineage": "aqua",
+      "name": "Ondine Vive",
+      "file": "child_aqua.png",
+      "path": "assets/sprites/child_aqua.png"
     },
     {
-      "id": "adult_solar",
+      "id": "adult_aqua_coral",
       "stage": "adult",
       "stageIndex": 3,
-      "name": "Adulte Solaire",
-      "file": "adult_solar.png",
-      "path": "assets/sprites/adult_solar.png"
+      "lineage": "aqua",
+      "name": "Corallia",
+      "file": "adult_aqua_coral.png",
+      "path": "assets/sprites/adult_aqua_coral.png"
     },
     {
-      "id": "adult_athletic",
+      "id": "adult_aqua_leviathan",
       "stage": "adult",
       "stageIndex": 3,
-      "name": "Adulte Athlétique",
-      "file": "adult_athletic.png",
-      "path": "assets/sprites/adult_athletic.png"
+      "lineage": "aqua",
+      "name": "Léviathan Azur",
+      "file": "adult_aqua_leviathan.png",
+      "path": "assets/sprites/adult_aqua_leviathan.png"
     },
     {
-      "id": "adult_gourmet",
+      "id": "adult_aqua_pearl",
       "stage": "adult",
       "stageIndex": 3,
-      "name": "Adulte Gourmet",
-      "file": "adult_gourmet.png",
-      "path": "assets/sprites/adult_gourmet.png"
+      "lineage": "aqua",
+      "name": "Perle Gourmande",
+      "file": "adult_aqua_pearl.png",
+      "path": "assets/sprites/adult_aqua_pearl.png"
     },
     {
-      "id": "adult_shadow",
+      "id": "adult_aqua_abyss",
       "stage": "adult",
       "stageIndex": 3,
-      "name": "Adulte Ombre",
-      "file": "adult_shadow.png",
-      "path": "assets/sprites/adult_shadow.png"
+      "lineage": "aqua",
+      "name": "Abyssal",
+      "file": "adult_aqua_abyss.png",
+      "path": "assets/sprites/adult_aqua_abyss.png"
+    },
+    {
+      "id": "baby_flora",
+      "stage": "baby",
+      "stageIndex": 1,
+      "lineage": "flora",
+      "name": "P'tit Bourgeon",
+      "file": "baby_flora.png",
+      "path": "assets/sprites/baby_flora.png"
+    },
+    {
+      "id": "child_flora",
+      "stage": "child",
+      "stageIndex": 2,
+      "lineage": "flora",
+      "name": "Feuillu Curieux",
+      "file": "child_flora.png",
+      "path": "assets/sprites/child_flora.png"
+    },
+    {
+      "id": "adult_flora_bloom",
+      "stage": "adult",
+      "stageIndex": 3,
+      "lineage": "flora",
+      "name": "Floramajesté",
+      "file": "adult_flora_bloom.png",
+      "path": "assets/sprites/adult_flora_bloom.png"
+    },
+    {
+      "id": "adult_flora_raptor",
+      "stage": "adult",
+      "stageIndex": 3,
+      "lineage": "flora",
+      "name": "Vélociflore",
+      "file": "adult_flora_raptor.png",
+      "path": "assets/sprites/adult_flora_raptor.png"
+    },
+    {
+      "id": "adult_flora_truffle",
+      "stage": "adult",
+      "stageIndex": 3,
+      "lineage": "flora",
+      "name": "Truffignon",
+      "file": "adult_flora_truffle.png",
+      "path": "assets/sprites/adult_flora_truffle.png"
+    },
+    {
+      "id": "adult_flora_thorn",
+      "stage": "adult",
+      "stageIndex": 3,
+      "lineage": "flora",
+      "name": "Ronce-Noire",
+      "file": "adult_flora_thorn.png",
+      "path": "assets/sprites/adult_flora_thorn.png"
+    },
+    {
+      "id": "baby_ember",
+      "stage": "baby",
+      "stageIndex": 1,
+      "lineage": "ember",
+      "name": "P'tite Braise",
+      "file": "baby_ember.png",
+      "path": "assets/sprites/baby_ember.png"
+    },
+    {
+      "id": "child_ember",
+      "stage": "child",
+      "stageIndex": 2,
+      "lineage": "ember",
+      "name": "Pyrolynx",
+      "file": "child_ember.png",
+      "path": "assets/sprites/child_ember.png"
+    },
+    {
+      "id": "adult_ember_solar",
+      "stage": "adult",
+      "stageIndex": 3,
+      "lineage": "ember",
+      "name": "Solarix",
+      "file": "adult_ember_solar.png",
+      "path": "assets/sprites/adult_ember_solar.png"
+    },
+    {
+      "id": "adult_ember_comet",
+      "stage": "adult",
+      "stageIndex": 3,
+      "lineage": "ember",
+      "name": "Comète Fulgurante",
+      "file": "adult_ember_comet.png",
+      "path": "assets/sprites/adult_ember_comet.png"
+    },
+    {
+      "id": "adult_ember_magma",
+      "stage": "adult",
+      "stageIndex": 3,
+      "lineage": "ember",
+      "name": "Magma-Chef",
+      "file": "adult_ember_magma.png",
+      "path": "assets/sprites/adult_ember_magma.png"
+    },
+    {
+      "id": "adult_ember_eclipse",
+      "stage": "adult",
+      "stageIndex": 3,
+      "lineage": "ember",
+      "name": "Éclipse Nocturne",
+      "file": "adult_ember_eclipse.png",
+      "path": "assets/sprites/adult_ember_eclipse.png"
     }
   ],
   "sprites": {
     "egg": "assets/sprites/egg.png",
-    "baby_blob": "assets/sprites/baby_blob.png",
-    "child_sprout": "assets/sprites/child_sprout.png",
-    "adult_solar": "assets/sprites/adult_solar.png",
-    "adult_athletic": "assets/sprites/adult_athletic.png",
-    "adult_gourmet": "assets/sprites/adult_gourmet.png",
-    "adult_shadow": "assets/sprites/adult_shadow.png"
+    "baby_aqua": "assets/sprites/baby_aqua.png",
+    "child_aqua": "assets/sprites/child_aqua.png",
+    "adult_aqua_coral": "assets/sprites/adult_aqua_coral.png",
+    "adult_aqua_leviathan": "assets/sprites/adult_aqua_leviathan.png",
+    "adult_aqua_pearl": "assets/sprites/adult_aqua_pearl.png",
+    "adult_aqua_abyss": "assets/sprites/adult_aqua_abyss.png",
+    "baby_flora": "assets/sprites/baby_flora.png",
+    "child_flora": "assets/sprites/child_flora.png",
+    "adult_flora_bloom": "assets/sprites/adult_flora_bloom.png",
+    "adult_flora_raptor": "assets/sprites/adult_flora_raptor.png",
+    "adult_flora_truffle": "assets/sprites/adult_flora_truffle.png",
+    "adult_flora_thorn": "assets/sprites/adult_flora_thorn.png",
+    "baby_ember": "assets/sprites/baby_ember.png",
+    "child_ember": "assets/sprites/child_ember.png",
+    "adult_ember_solar": "assets/sprites/adult_ember_solar.png",
+    "adult_ember_comet": "assets/sprites/adult_ember_comet.png",
+    "adult_ember_magma": "assets/sprites/adult_ember_magma.png",
+    "adult_ember_eclipse": "assets/sprites/adult_ember_eclipse.png"
   }
 }

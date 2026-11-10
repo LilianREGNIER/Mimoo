@@ -4,10 +4,16 @@
  *
  * Générateur autonome (zéro dépendance externe, uniquement fs, path, zlib natifs Node.js)
  * produisant :
- * - Les 7 spritesheets PNG RGBA 32-bits (256x384 px, grille 4x6 de cellules 64x64 px, fond transparent)
+ * - Les 19 spritesheets PNG RGBA 32-bits (256x512 px, grille 4x8 de cellules 64x64 px, fond transparent)
  *   dans assets/sprites/<formId>.png :
- *     egg, baby_blob, child_sprout, adult_solar, adult_athletic, adult_gourmet, adult_shadow
- * - Le manifeste assets/sprites/sprites-manifest.json
+ *     1. egg
+ *     2. Lignée Aquatique (aqua) :
+ *        baby_aqua, child_aqua, adult_aqua_coral, adult_aqua_leviathan, adult_aqua_pearl, adult_aqua_abyss
+ *     3. Lignée Sylvestre (flora) :
+ *        baby_flora, child_flora, adult_flora_bloom, adult_flora_raptor, adult_flora_truffle, adult_flora_thorn
+ *     4. Lignée Astrale / Flamme (ember) :
+ *        baby_ember, child_ember, adult_ember_solar, adult_ember_comet, adult_ember_magma, adult_ember_eclipse
+ * - Le manifeste assets/sprites/sprites-manifest.json (8 lignes d'animation x 4 frames, 19 formes)
  * - Les icônes assets/icons/tray-icon.png (32x32), assets/icons/app-icon.png (256x256)
  *   et assets/icons/app-icon.ico (ICO Windows valide encapsulant le PNG 256x256).
  */
@@ -255,7 +261,47 @@ class CellPainter {
   }
 
   /**
-   * Visage expressif selon l'état d'animation (idle, walk, eat, happy, sleep, sad)
+   * Dessine les petits bras/mains spécifiques aux animations de besoins (hungry / need_cuddle)
+   */
+  drawNeedPoseOverlay(cx, cy, state, frame, palette) {
+    const { outline, base, highlight } = palette;
+    if (state === 'hungry') {
+      // Petites mains pressées sur le ventre qui gargouille
+      const tremor = frame % 2;
+      this.rect(cx - 5, cy + 3 + tremor, 3, 2, outline);
+      this.rect(cx - 4, cy + 3 + tremor, 2, 1, highlight || base);
+      this.rect(cx + 3, cy + 3 + tremor, 3, 2, outline);
+      this.rect(cx + 3, cy + 3 + tremor, 2, 1, highlight || base);
+
+      // Ondes de gargouillis sur le ventre
+      const waveColor = '#FBBF24';
+      if (frame % 2 === 0) {
+        this.dot(cx - 8, cy + 3, waveColor);
+        this.dot(cx - 9, cy + 4, waveColor);
+        this.dot(cx + 8, cy + 3, waveColor);
+        this.dot(cx + 9, cy + 4, waveColor);
+      } else {
+        this.dot(cx - 9, cy + 2, waveColor);
+        this.dot(cx - 8, cy + 5, waveColor);
+        this.dot(cx + 9, cy + 2, waveColor);
+        this.dot(cx + 8, cy + 5, waveColor);
+      }
+    } else if (state === 'need_cuddle') {
+      // Petits bras grands ouverts / levés vers le haut pour réclamer un câlin ou du jeu
+      const leftUp = frame % 2 === 0 ? -1 : 0;
+      const rightUp = frame % 2 === 1 ? -1 : 0;
+      // Bras gauche tendu
+      this.rect(cx - 10, cy - 2 + leftUp, 3, 3, outline);
+      this.rect(cx - 9, cy - 1 + leftUp, 2, 2, base);
+      // Bras droit tendu
+      this.rect(cx + 7, cy - 2 + rightUp, 3, 3, outline);
+      this.rect(cx + 7, cy - 1 + rightUp, 2, 2, base);
+    }
+  }
+
+  /**
+   * Visage expressif selon les 8 états d'animation :
+   * idle, walk, eat, happy, sleep, sad, hungry, need_cuddle
    */
   drawFace(cx, cy, state, frame, options = {}) {
     const eyeColor = options.eyeColor || '#141B29';
@@ -267,8 +313,8 @@ class CellPainter {
     const lx = cx - eyeSpan;
     const rx = cx + eyeSpan - 1;
 
-    // Joues roses
-    if (cheekColor && state !== 'sad') {
+    // Joues roses (plus vives sur need_cuddle et happy)
+    if (cheekColor && state !== 'sad' && state !== 'hungry') {
       this.dot(lx - 2, cy + 2, cheekColor);
       this.dot(lx - 1, cy + 2, cheekColor);
       this.dot(rx + 2, cy + 2, cheekColor);
@@ -277,7 +323,7 @@ class CellPainter {
 
     // Yeux selon l'état
     if (state === 'happy') {
-      // Yeux joyeux en arc ^ ^
+      // Yeux joyeux en arc ^ ^ avec éclat étoilé
       this.dot(lx - 1, cy, eyeColor);
       this.dot(lx, cy - 1, eyeColor);
       this.dot(lx + 1, cy, eyeColor);
@@ -305,6 +351,26 @@ class CellPainter {
       this.dot(rx + 2, cy - 1, eyeColor);
       // Petite larme au coin de l'œil
       this.dot(lx - 1, cy + 1, '#5CE1E6');
+    } else if (state === 'hungry') {
+      // Yeux affamés avec sourcils inclinés vers le centre
+      this.rect(lx, cy, 2, 2, eyeColor);
+      this.dot(lx, cy, eyeShine);
+      this.dot(lx - 1, cy - 1, eyeColor);
+      this.dot(lx, cy - 2, eyeColor);
+
+      this.rect(rx, cy, 2, 2, eyeColor);
+      this.dot(rx, cy, eyeShine);
+      this.dot(rx + 2, cy - 1, eyeColor);
+      this.dot(rx + 1, cy - 2, eyeColor);
+    } else if (state === 'need_cuddle') {
+      // Grands yeux brillants suppliants (2x3 avec double reflet blanc !)
+      this.rect(lx - 1, cy - 1, 3, 3, eyeColor);
+      this.dot(lx - 1, cy - 1, eyeShine);
+      this.dot(lx + 1, cy + 1, eyeShine);
+
+      this.rect(rx, cy - 1, 3, 3, eyeColor);
+      this.dot(rx, cy - 1, eyeShine);
+      this.dot(rx + 2, cy + 1, eyeShine);
     } else {
       // Yeux grands ouverts brillants (2x2 logiques avec éclat blanc)
       this.rect(lx, cy - 1, 2, 2, eyeColor);
@@ -334,6 +400,21 @@ class CellPainter {
       this.dot(cx - 1, my + 1, eyeColor);
       this.dot(cx, my, eyeColor);
       this.dot(cx + 1, my + 1, eyeColor);
+    } else if (state === 'hungry') {
+      // Bouche tremblante en vaguelette
+      const w0 = frame % 2;
+      const w1 = (frame + 1) % 2;
+      this.dot(cx - 2, my + w0, mouthColor);
+      this.dot(cx - 1, my + w1, eyeColor);
+      this.dot(cx, my + w0, mouthColor);
+      this.dot(cx + 1, my + w1, eyeColor);
+    } else if (state === 'need_cuddle') {
+      // Petite bouche en "w" / appel affectueux
+      this.dot(cx - 2, my, eyeColor);
+      this.dot(cx - 1, my + 1, mouthColor);
+      this.dot(cx, my, eyeColor);
+      this.dot(cx + 1, my + 1, mouthColor);
+      this.dot(cx + 2, my, eyeColor);
     } else if (state === 'sleep') {
       this.dot(cx, my, eyeColor);
     } else {
@@ -344,7 +425,13 @@ class CellPainter {
   }
 
   /**
-   * Effets visuels d'état : cœur (happy), Zzz (sleep), nourriture/miettes (eat), goutte de sueur (sad)
+   * Effets visuels d'état :
+   * - happy : cœur + étoiles
+   * - sleep : Zzz
+   * - eat : nourriture + miettes
+   * - sad : goutte de sueur
+   * - hungry : icône de faim (cuisse de poulet / bol)
+   * - need_cuddle : cœurs d'appel + étoile de jeu rebondissante
    */
   drawStateEffects(state, frame) {
     if (state === 'happy') {
@@ -389,7 +476,7 @@ class CellPainter {
       }
     } else if (state === 'eat') {
       // Pomme / biscuit croqué + petites miettes/étoiles
-      const fx = 6;
+      const fx = 5;
       const fy = 18 + (frame % 2);
       if (frame < 3) {
         this.rect(fx, fy, 3, 3, '#FF4D4D');
@@ -403,22 +490,63 @@ class CellPainter {
         this.dot(10, 21, '#F4A261');
       }
     } else if (state === 'sad') {
-      // Grosse goutte de sueur bleue qui descend + petit nuage gris
+      // Grosse goutte de sueur bleue qui descend
       const sy = 9 + frame;
       const sx = 25;
       this.dot(sx, sy, '#ADE8F4');
       this.rect(sx - 1, sy + 1, 3, 2, '#48CAE4');
       this.dot(sx, sy + 1, '#CAF0F8');
       this.dot(sx, sy + 3, '#0096C7');
+    } else if (state === 'hungry') {
+      // Bulle d'envie de manger avec petite cuisse rôtie / icône de faim en haut à droite
+      const by = 4 + (frame % 2);
+      const bx = 23;
+      // Fond de mini-bulle claire
+      this.rect(bx - 1, by, 7, 6, '#FFFBEB');
+      this.rect(bx, by - 1, 5, 8, '#FFFBEB');
+      // Cuisse de poulet dorée + os blanc
+      this.rect(bx, by + 1, 4, 3, '#D97706');
+      this.dot(bx + 1, by + 1, '#FBBF24');
+      this.rect(bx + 4, by + 2, 2, 1, '#FFFFFF');
+      this.dot(bx + 5, by + 1, '#E2E8F0');
+      this.dot(bx + 5, by + 3, '#E2E8F0');
+      // Petits points de pensée
+      this.dot(bx - 2, by + 7, '#FDE68A');
+    } else if (state === 'need_cuddle') {
+      // Double petit cœur rose à gauche + balle/étoile de jeu à droite
+      const bounce = frame % 2;
+      const hx = 4;
+      const hy = 6 - bounce;
+      this.dot(hx, hy, '#FF4D8D');
+      this.dot(hx + 2, hy, '#FF4D8D');
+      this.rect(hx - 1, hy + 1, 5, 1, '#FF4D8D');
+      this.rect(hx, hy + 2, 3, 1, '#FF85B3');
+      this.dot(hx + 1, hy + 3, '#FF4D8D');
+
+      // Étoile / balle d'appel au jeu à droite
+      const bx = 24;
+      const by = 6 + bounce;
+      this.rect(bx, by, 4, 4, '#38BDF8');
+      this.rect(bx + 1, by + 1, 2, 2, '#FDE047');
+      this.dot(bx, by, '#BAE6FD');
     }
   }
 }
 
 // ============================================================================
-// 3. DESSIN DES 7 FORMES (STADES 0 À 3)
+// 3. DESSIN DES 19 FORMES (ŒUF + 3 LIGNÉES : AQUA, FLORA, EMBER)
 // ============================================================================
 
-const ROW_STATES = ['idle', 'walk', 'eat', 'happy', 'sleep', 'sad'];
+const ROW_STATES = [
+  'idle',
+  'walk',
+  'eat',
+  'happy',
+  'sleep',
+  'sad',
+  'hungry',
+  'need_cuddle',
+];
 
 function getMotionOffsets(state, frame) {
   let dx = 0;
@@ -437,13 +565,29 @@ function getMotionOffsets(state, frame) {
   } else if (state === 'sad') {
     dx = frame % 2 === 0 ? -1 : 1;
     dy = 1;
+  } else if (state === 'hungry') {
+    dx = frame % 2 === 0 ? -1 : 0;
+    dy = [1, 0, 1, 0][frame];
+  } else if (state === 'need_cuddle') {
+    dx = [0, -1, 0, 1][frame];
+    dy = [0, -2, -1, 0][frame];
   }
   return { dx, dy };
 }
 
-/**
- * 1. EGG : Œuf crème tacheté de vert/doré qui oscille
- */
+function drawWalkingFeet(cell, cx, cy, state, frame, outlineColor, fillColor, spread = 5, baseYOffset = 7) {
+  const leftLift = (state === 'walk' || state === 'need_cuddle') && frame % 2 === 0 ? -1 : 0;
+  const rightLift = (state === 'walk' || state === 'need_cuddle') && frame % 2 === 1 ? -1 : 0;
+  cell.rect(cx - spread, cy + baseYOffset + leftLift, 3, 2, outlineColor);
+  cell.rect(cx - spread + 1, cy + baseYOffset + leftLift, 2, 1, fillColor);
+  cell.rect(cx + spread - 3, cy + baseYOffset + rightLift, 3, 2, outlineColor);
+  cell.rect(cx + spread - 3, cy + baseYOffset + rightLift, 2, 1, fillColor);
+}
+
+// ----------------------------------------------------------------------------
+// 3.1. STADE 0 : EGG (Œuf mystique crème et doré avec fissures progressives)
+// ----------------------------------------------------------------------------
+
 function drawEgg(cell, state, frame) {
   const { dx, dy } = getMotionOffsets(state, frame);
   const cx = 16 + dx;
@@ -456,12 +600,10 @@ function drawEgg(cell, state, frame) {
   const shade = '#E8D8B8';
   const highlight = '#FFFFFF';
 
-  // Forme d'œuf continue (plus étroite vers le sommet, plus ronde à la base)
   const rxBase = 7.4;
   const ry = 9.0;
   for (let y = Math.floor(cy - ry - 1); y <= Math.ceil(cy + ry + 1); y++) {
     const ny = (y - cy) / ry;
-    // Rétrécissement progressif vers le haut de l'œuf
     const taper = 1 - 0.25 * Math.max(-1, Math.min(1, -ny));
     const rx = rxBase * taper;
     for (let x = Math.floor(cx - rxBase - 1); x <= Math.ceil(cx + rxBase + 1); x++) {
@@ -481,31 +623,57 @@ function drawEgg(cell, state, frame) {
     }
   }
 
-  // Taches vert émeraude et dorées caractéristiques
-  const greenSpot = '#52B788';
+  // Motifs mystiques dorés, émeraude et turquoise (rappelant les 3 lignées)
   const goldSpot = '#F5B73B';
-  cell.rect(cx - 4, cy - 2, 2, 2, greenSpot);
+  const floraSpot = '#52B788';
+  const aquaSpot = '#38BDF8';
+  cell.rect(cx - 4, cy - 2, 2, 2, goldSpot);
   cell.rect(cx + 2, cy + 1, 2, 2, goldSpot);
-  cell.dot(cx - 1, cy - 5, goldSpot);
+  cell.dot(cx - 1, cy - 5, floraSpot);
   cell.dot(cx, cy - 5, goldSpot);
-  cell.rect(cx - 3, cy + 3, 2, 2, goldSpot);
-  cell.dot(cx + 3, cy - 3, greenSpot);
+  cell.rect(cx - 3, cy + 3, 2, 2, aquaSpot);
+  cell.dot(cx + 3, cy - 3, floraSpot);
 
-  // Petits fendillements joyeux sur happy ou idle frame 2
-  if (state === 'happy' || (state === 'idle' && frame === 2)) {
-    cell.dot(cx - 2, cy - 1, outline);
-    cell.dot(cx - 1, cy, outline);
+  // Progression des fissures :
+  // Sur 'idle', frame 0 = intact, frame 1 = petite fissure, frame 2 = fissure moyenne, frame 3 = grande fissure lumineuse !
+  const crackLevel = state === 'idle' ? frame : (state === 'happy' || state === 'need_cuddle' ? 2 : 1);
+
+  if (crackLevel >= 1) {
+    // Niveau 1 : première petite fissure près du sommet
+    cell.dot(cx - 1, cy - 4, outline);
+    cell.dot(cx, cy - 3, outline);
+    cell.dot(cx - 1, cy - 2, outline);
+  }
+  if (crackLevel >= 2) {
+    // Niveau 2 : fissure en zigzag qui s'étend au centre
     cell.dot(cx, cy - 1, outline);
-    cell.dot(cx + 1, cy, outline);
+    cell.dot(cx + 1, cy - 1, outline);
+    cell.dot(cx + 2, cy, outline);
+    cell.dot(cx - 2, cy - 1, outline);
+    cell.dot(cx - 3, cy, outline);
+  }
+  if (crackLevel >= 3) {
+    // Niveau 3 : grandes fissures ramifiées avec lueur dorée prête à éclore
+    cell.dot(cx + 1, cy + 1, outline);
+    cell.dot(cx + 2, cy + 2, outline);
+    cell.dot(cx - 2, cy + 1, outline);
+    cell.dot(cx - 4, cy + 2, outline);
+    cell.dot(cx, cy - 2, '#FFF3B0');
+    cell.dot(cx + 1, cy, '#FFE066');
+    cell.dot(cx - 1, cy, '#FFF3B0');
   }
 
   cell.drawStateEffects(state, frame);
 }
 
+// ----------------------------------------------------------------------------
+// 3.2. LIGNÉE AQUATIQUE (AQUA)
+// ----------------------------------------------------------------------------
+
 /**
- * 2. BABY_BLOB : Petit slime/boule turquoise mignon avec grands yeux brillants et joues roses
+ * baby_aqua : P'tit Goutte turquoise mignon avec gouttelette sur la tête
  */
-function drawBabyBlob(cell, state, frame) {
+function drawBabyAqua(cell, state, frame) {
   const { dx, dy } = getMotionOffsets(state, frame);
   const cx = 16 + dx;
   const cy = 19 + dy;
@@ -513,33 +681,32 @@ function drawBabyBlob(cell, state, frame) {
   cell.groundShadow(16 + dx, 28, 8.5, 1.8);
 
   const palette = {
-    outline: '#0D4A56',
+    outline: '#0B4650',
     base: '#48E0E4',
-    shade: '#20B2B8',
-    highlight: '#B4FAFC',
+    shade: '#1CA7B0',
+    highlight: '#BDFBFF',
   };
 
-  const rx = state === 'sleep' ? 9.5 : 8.2;
+  const rx = state === 'sleep' ? 9.4 : 8.2;
   const ry = state === 'sleep' ? 6.2 : 7.2;
   cell.shadedBody(cx, cy, rx, ry, palette, 1);
 
-  // Petite houppe / goutte gélatineuse sur le sommet
+  // Gouttelette d'eau sur le sommet de la tête
   const topY = Math.round(cy - ry);
   cell.rect(cx - 1, topY - 2, 2, 2, palette.base);
+  cell.dot(cx, topY - 3, palette.highlight);
   cell.dot(cx - 1, topY - 3, palette.outline);
-  cell.dot(cx, topY - 3, palette.outline);
+  cell.dot(cx + 1, topY - 2, palette.outline);
 
-  cell.drawFace(cx, cy, state, frame, {
-    cheekColor: '#FF7EB6',
-    eyeSpan: 4,
-  });
+  cell.drawFace(cx, cy, state, frame, { cheekColor: '#FF7EB6', eyeSpan: 4 });
+  cell.drawNeedPoseOverlay(cx, cy, state, frame, palette);
   cell.drawStateEffects(state, frame);
 }
 
 /**
- * 3. CHILD_SPROUT : Créature vert tendre avec une petite feuille sur la tête et des petites pattes
+ * child_aqua : Ondine Vive bleu azur avec petites nageoires-oreilles
  */
-function drawChildSprout(cell, state, frame) {
+function drawChildAqua(cell, state, frame) {
   const { dx, dy } = getMotionOffsets(state, frame);
   const cx = 16 + dx;
   const cy = 18 + dy;
@@ -547,45 +714,520 @@ function drawChildSprout(cell, state, frame) {
   cell.groundShadow(16 + dx, 28, 8.5, 1.8);
 
   const palette = {
-    outline: '#1D4726',
-    base: '#8CE668',
-    shade: '#5BBF40',
-    highlight: '#C9FCAD',
+    outline: '#0C4A6E',
+    base: '#38BDF8',
+    shade: '#0284C7',
+    highlight: '#BAE6FD',
   };
 
-  // Petites pattes alternées pour la marche
-  const leftFootY = cy + 7 + (state === 'walk' && frame % 2 === 0 ? -1 : 0);
-  const rightFootY = cy + 7 + (state === 'walk' && frame % 2 === 1 ? -1 : 0);
-  cell.rect(cx - 5, leftFootY, 3, 2, '#1D4726');
-  cell.rect(cx - 4, leftFootY, 2, 1, '#459E30');
-  cell.rect(cx + 2, rightFootY, 3, 2, '#1D4726');
-  cell.rect(cx + 2, rightFootY, 2, 1, '#459E30');
+  drawWalkingFeet(cell, cx, cy, state, frame, palette.outline, '#0284C7', 5, 7);
 
-  // Corps rond
+  // Nageoires-oreilles latérales azur et cyan
+  const finSway = frame % 2 === 0 ? 0 : -1;
+  cell.rect(cx - 11, cy - 3 + finSway, 3, 4, palette.outline);
+  cell.rect(cx - 10, cy - 2 + finSway, 2, 2, '#67E8F9');
+  cell.rect(cx + 8, cy - 3 + finSway, 3, 4, palette.outline);
+  cell.rect(cx + 8, cy - 2 + finSway, 2, 2, '#67E8F9');
+
   cell.shadedBody(cx, cy, 8.0, 7.2, palette);
 
-  // Petite tige + double feuille sur la tête
-  const stemY = cy - 9;
-  const leafSway = frame % 2 === 0 ? 0 : 1;
-  cell.rect(cx, stemY, 1, 3, '#1D4726');
-  // Feuille gauche
-  cell.rect(cx - 4, stemY - 1 + leafSway, 4, 2, '#2B9348');
-  cell.dot(cx - 3, stemY - 1 + leafSway, '#80ED99');
-  // Feuille droite
-  cell.rect(cx + 1, stemY - 2, 4, 2, '#2B9348');
-  cell.dot(cx + 2, stemY - 2, '#80ED99');
+  // Petite crête d'écume blanche au sommet
+  cell.rect(cx - 1, cy - 9, 3, 2, '#E0F2FE');
+  cell.dot(cx, cy - 10, palette.outline);
 
-  cell.drawFace(cx, cy, state, frame, {
-    cheekColor: '#FF8CA3',
-    eyeSpan: 4,
-  });
+  cell.drawFace(cx, cy, state, frame, { cheekColor: '#F472B6', eyeSpan: 4 });
+  cell.drawNeedPoseOverlay(cx, cy, state, frame, palette);
   cell.drawStateEffects(state, frame);
 }
 
 /**
- * 4. ADULT_SOLAR : Créature dorée/solaire radieuse avec couronne lumineuse et ailes/auréole
+ * adult_aqua_coral : Corallia (bleu lagon et couronne de corail rose lumineux)
  */
-function drawAdultSolar(cell, state, frame) {
+function drawAdultAquaCoral(cell, state, frame) {
+  const { dx, dy } = getMotionOffsets(state, frame);
+  const cx = 16 + dx;
+  const cy = 18 + dy;
+
+  cell.groundShadow(16 + dx, 28, 9, 1.8);
+
+  const palette = {
+    outline: '#115E59',
+    base: '#2DD4BF',
+    shade: '#0D9488',
+    highlight: '#99F6E4',
+  };
+
+  // Nageoires voilées rose corail sur les côtés
+  const finFlap = frame % 2 === 0 ? 0 : -1;
+  cell.rect(cx - 11, cy - 2 + finFlap, 3, 5, '#FF6B8B');
+  cell.rect(cx - 10, cy - 1 + finFlap, 2, 3, '#FFC2D1');
+  cell.rect(cx + 8, cy - 2 + finFlap, 3, 5, '#FF6B8B');
+  cell.rect(cx + 8, cy - 1 + finFlap, 2, 3, '#FFC2D1');
+
+  drawWalkingFeet(cell, cx, cy, state, frame, palette.outline, '#0D9488', 5, 7);
+  cell.shadedBody(cx, cy, 8.5, 7.6, palette);
+
+  // Collier de perles nacrées sur le poitrail
+  cell.dot(cx - 3, cy + 4, '#FFF1F2');
+  cell.dot(cx, cy + 5, '#FFE4E6');
+  cell.dot(cx + 3, cy + 4, '#FFF1F2');
+
+  // Couronne de corail rose lumineux ramifiée au sommet
+  const crownY = cy - 9;
+  cell.rect(cx - 4, crownY, 9, 2, '#E11D48');
+  cell.rect(cx - 3, crownY, 7, 1, '#FF8FA3');
+  cell.rect(cx - 5, crownY - 2, 2, 2, '#FF6B8B');
+  cell.rect(cx - 1, crownY - 3, 3, 3, '#FF6B8B');
+  cell.dot(cx, crownY - 2, '#FFF1F2');
+  cell.rect(cx + 4, crownY - 2, 2, 2, '#FF6B8B');
+
+  cell.drawFace(cx, cy - 1, state, frame, { cheekColor: '#FB7185', eyeSpan: 4 });
+  cell.drawNeedPoseOverlay(cx, cy, state, frame, palette);
+  cell.drawStateEffects(state, frame);
+}
+
+/**
+ * adult_aqua_leviathan : Léviathan Azur (bleu électrique sportif, crête hydrodynamique)
+ */
+function drawAdultAquaLeviathan(cell, state, frame) {
+  const { dx, dy } = getMotionOffsets(state, frame);
+  const cx = 16 + dx;
+  const cy = 18 + dy;
+
+  cell.groundShadow(16 + dx, 28, 9, 1.8);
+
+  const palette = {
+    outline: '#172554',
+    base: '#2563EB',
+    shade: '#1D4ED8',
+    highlight: '#93C5FD',
+  };
+
+  // Ailerons hydrodynamiques acérés cyan/or
+  const wingShift = frame % 2 === 0 ? 0 : 1;
+  cell.rect(cx - 11, cy - 3 + wingShift, 3, 4, '#00F5D4');
+  cell.dot(cx - 12, cy - 2 + wingShift, '#FACC15');
+  cell.rect(cx + 8, cy - 3 + wingShift, 3, 4, '#00F5D4');
+  cell.dot(cx + 11, cy - 2 + wingShift, '#FACC15');
+
+  drawWalkingFeet(cell, cx, cy, state, frame, palette.outline, '#00F5D4', 5, 7);
+  cell.shadedBody(cx, cy, 8.2, 7.6, palette);
+
+  // Crête dorsale/frontale hydrodynamique cyan et or
+  const crestY = cy - 11;
+  cell.rect(cx - 2, crestY + 1, 5, 3, '#00BBF9');
+  cell.rect(cx - 1, crestY, 3, 3, '#00F5D4');
+  cell.dot(cx, crestY - 1, '#FACC15');
+
+  // Visière/marquage sportif jaune vif sur le front
+  cell.rect(cx - 6, cy - 4, 13, 1, '#FACC15');
+
+  cell.drawFace(cx, cy, state, frame, { cheekColor: '#38BDF8', eyeSpan: 4 });
+  cell.drawNeedPoseOverlay(cx, cy, state, frame, palette);
+  cell.drawStateEffects(state, frame);
+}
+
+/**
+ * adult_aqua_pearl : Perle Gourmande (rond nacré pastel avec coquillage/toque et perle)
+ */
+function drawAdultAquaPearl(cell, state, frame) {
+  const { dx, dy } = getMotionOffsets(state, frame);
+  const cx = 16 + dx;
+  const cy = 19 + dy;
+
+  cell.groundShadow(16 + dx, 28, 9.5, 1.9);
+
+  const palette = {
+    outline: '#334155',
+    base: '#E0F2FE',
+    shade: '#7DD3FC',
+    highlight: '#FFFFFF',
+  };
+
+  drawWalkingFeet(cell, cx, cy, state, frame, palette.outline, '#F472B6', 6, 7);
+
+  // Corps bien rond nacré
+  cell.shadedBody(cx, cy, 9.2, 7.6, palette);
+
+  // Bavoir coquillage pastel sur le ventre avec perle rose
+  cell.rect(cx - 4, cy + 3, 9, 3, '#FFF1F2');
+  cell.rect(cx - 3, cy + 6, 7, 1, '#FBCFE8');
+  cell.rect(cx - 1, cy + 4, 2, 2, '#FF6B8B');
+
+  // Toque-coquillage de chef sur la tête avec perle nacrée au centre
+  const hatY = cy - 12;
+  cell.rect(cx - 5, hatY + 1, 11, 4, palette.outline);
+  cell.rect(cx - 4, hatY, 9, 4, '#FFFFFF');
+  cell.rect(cx - 3, hatY + 4, 7, 1, '#38BDF8');
+  cell.rect(cx - 1, hatY + 2, 3, 2, '#FF85A1'); // Perle rose sur la toque
+
+  cell.drawFace(cx, cy - 1, state, frame, { cheekColor: '#F472B6', eyeSpan: 4 });
+  cell.drawNeedPoseOverlay(cx, cy, state, frame, palette);
+  cell.drawStateEffects(state, frame);
+}
+
+/**
+ * adult_aqua_abyss : Abyssal (bleu nuit profond avec lanterne bioluminescente cyan)
+ */
+function drawAdultAquaAbyss(cell, state, frame) {
+  const { dx, dy } = getMotionOffsets(state, frame);
+  const cx = 16 + dx;
+  const cy = 18 + dy;
+
+  cell.groundShadow(16 + dx, 28, 8.5, 1.8);
+
+  const palette = {
+    outline: '#020617',
+    base: '#1E1B4B',
+    shade: '#0F172A',
+    highlight: '#312E81',
+  };
+
+  // Nageoires spectrales bioluminescentes
+  const glowShift = frame % 2;
+  cell.rect(cx - 11, cy - 1 + glowShift, 2, 3, '#00F5D4');
+  cell.rect(cx + 9, cy - 1 + glowShift, 2, 3, '#00F5D4');
+
+  cell.shadedBody(cx, cy, 8.2, 7.6, palette);
+
+  // Antenne recourbée d'abysses avec lanterne bioluminescente cyan/jaune
+  const antY = cy - 11;
+  cell.rect(cx - 1, antY + 1, 2, 3, '#312E81');
+  cell.rect(cx, antY, 4, 1, '#312E81');
+  // Lanterne brillante qui pulse
+  const lanternX = cx + 4;
+  const lanternY = antY + 1 + glowShift;
+  cell.rect(lanternX - 1, lanternY, 3, 3, '#00F5D4');
+  cell.dot(lanternX, lanternY + 1, '#FFFFFF');
+
+  // Motifs bioluminescents sur le ventre
+  cell.dot(cx - 3, cy + 5, '#00F5D4');
+  cell.dot(cx + 3, cy + 5, '#00F5D4');
+
+  cell.drawFace(cx, cy, state, frame, {
+    eyeColor: '#00F5D4',
+    eyeShine: '#FFFFFF',
+    cheekColor: '#38BDF8',
+    mouthColor: '#00F5D4',
+    eyeSpan: 4,
+  });
+  cell.drawNeedPoseOverlay(cx, cy, state, frame, palette);
+  cell.drawStateEffects(state, frame);
+}
+
+// ----------------------------------------------------------------------------
+// 3.3. LIGNÉE SYLVESTRE (FLORA)
+// ----------------------------------------------------------------------------
+
+/**
+ * baby_flora : P'tit Bourgeon vert tendre avec une petite pousse
+ */
+function drawBabyFlora(cell, state, frame) {
+  const { dx, dy } = getMotionOffsets(state, frame);
+  const cx = 16 + dx;
+  const cy = 19 + dy;
+
+  cell.groundShadow(16 + dx, 28, 8.5, 1.8);
+
+  const palette = {
+    outline: '#1A2E05',
+    base: '#A3E635',
+    shade: '#65A30D',
+    highlight: '#ECFCCB',
+  };
+
+  const rx = state === 'sleep' ? 9.4 : 8.2;
+  const ry = state === 'sleep' ? 6.2 : 7.2;
+  cell.shadedBody(cx, cy, rx, ry, palette, 1);
+
+  // Petite pousse unique verte au sommet
+  const topY = Math.round(cy - ry);
+  cell.rect(cx, topY - 3, 1, 3, '#1A2E05');
+  cell.rect(cx + 1, topY - 4, 3, 2, '#4ADE80');
+  cell.dot(cx + 2, topY - 4, '#DCFCE7');
+
+  cell.drawFace(cx, cy, state, frame, { cheekColor: '#FB7185', eyeSpan: 4 });
+  cell.drawNeedPoseOverlay(cx, cy, state, frame, palette);
+  cell.drawStateEffects(state, frame);
+}
+
+/**
+ * child_flora : Feuillu Curieux vert émeraude avec deux feuilles et petites pattes
+ */
+function drawChildFlora(cell, state, frame) {
+  const { dx, dy } = getMotionOffsets(state, frame);
+  const cx = 16 + dx;
+  const cy = 18 + dy;
+
+  cell.groundShadow(16 + dx, 28, 8.5, 1.8);
+
+  const palette = {
+    outline: '#064E3B',
+    base: '#34D399',
+    shade: '#059669',
+    highlight: '#A7F3D0',
+  };
+
+  drawWalkingFeet(cell, cx, cy, state, frame, palette.outline, '#059669', 5, 7);
+  cell.shadedBody(cx, cy, 8.0, 7.2, palette);
+
+  // Tige + double feuille sur la tête
+  const stemY = cy - 9;
+  const leafSway = frame % 2 === 0 ? 0 : 1;
+  cell.rect(cx, stemY, 1, 3, palette.outline);
+  cell.rect(cx - 4, stemY - 1 + leafSway, 4, 2, '#10B981');
+  cell.dot(cx - 3, stemY - 1 + leafSway, '#A7F3D0');
+  cell.rect(cx + 1, stemY - 2, 4, 2, '#10B981');
+  cell.dot(cx + 2, stemY - 2, '#A7F3D0');
+
+  cell.drawFace(cx, cy, state, frame, { cheekColor: '#FF8CA3', eyeSpan: 4 });
+  cell.drawNeedPoseOverlay(cx, cy, state, frame, palette);
+  cell.drawStateEffects(state, frame);
+}
+
+/**
+ * adult_flora_bloom : Floramajesté (vert doré avec grande fleur solaire épanouie sur la tête)
+ */
+function drawAdultFloraBloom(cell, state, frame) {
+  const { dx, dy } = getMotionOffsets(state, frame);
+  const cx = 16 + dx;
+  const cy = 18 + dy;
+
+  cell.groundShadow(16 + dx, 28, 9, 1.8);
+
+  const palette = {
+    outline: '#1E3A1E',
+    base: '#84CC16',
+    shade: '#4D7C0F',
+    highlight: '#ECFCCB',
+  };
+
+  // Cape de pétales/feuilles dorées sur les côtés
+  const petalFlap = frame % 2 === 0 ? 0 : -1;
+  cell.rect(cx - 11, cy - 2 + petalFlap, 3, 5, '#65A30D');
+  cell.rect(cx - 10, cy - 1 + petalFlap, 2, 3, '#BEF264');
+  cell.rect(cx + 8, cy - 2 + petalFlap, 3, 5, '#65A30D');
+  cell.rect(cx + 8, cy - 1 + petalFlap, 2, 3, '#BEF264');
+
+  drawWalkingFeet(cell, cx, cy, state, frame, palette.outline, '#4D7C0F', 5, 7);
+  cell.shadedBody(cx, cy, 8.5, 7.6, palette);
+
+  // Grande fleur solaire épanouie au sommet
+  const flowerY = cy - 10;
+  // Pétales roses et dorés
+  cell.rect(cx - 5, flowerY, 11, 2, '#FB7185');
+  cell.rect(cx - 3, flowerY - 2, 7, 4, '#F43F5E');
+  // Cœur solaire doré de la fleur
+  cell.rect(cx - 2, flowerY - 1, 5, 2, '#FACC15');
+  cell.dot(cx, flowerY - 1, '#FEF08A');
+
+  cell.drawFace(cx, cy - 1, state, frame, { cheekColor: '#FB7185', eyeSpan: 4 });
+  cell.drawNeedPoseOverlay(cx, cy, state, frame, palette);
+  cell.drawStateEffects(state, frame);
+}
+
+/**
+ * adult_flora_raptor : Vélociflore (vert vif et orange, plumes/feuilles aérodynamiques)
+ */
+function drawAdultFloraRaptor(cell, state, frame) {
+  const { dx, dy } = getMotionOffsets(state, frame);
+  const cx = 16 + dx;
+  const cy = 18 + dy;
+
+  cell.groundShadow(16 + dx, 28, 9, 1.8);
+
+  const palette = {
+    outline: '#052E16',
+    base: '#22C55E',
+    shade: '#15803D',
+    highlight: '#86EFAC',
+  };
+
+  // Queue de vélociraptor feuillue sur le côté
+  const tailSway = frame % 2 === 0 ? 0 : -1;
+  cell.rect(cx - 12, cy + 2 + tailSway, 4, 3, '#15803D');
+  cell.rect(cx - 13, cy + 1 + tailSway, 2, 2, '#F97316');
+
+  // Plumes/feuilles aérodynamiques orange et vert vif sur la tête
+  const crestY = cy - 11;
+  cell.rect(cx - 5, crestY + 1, 3, 4, '#F97316');
+  cell.rect(cx - 1, crestY, 3, 4, '#FB923C');
+  cell.rect(cx + 3, crestY + 1, 3, 4, '#F97316');
+
+  drawWalkingFeet(cell, cx, cy, state, frame, palette.outline, '#F97316', 5, 7);
+  cell.shadedBody(cx, cy, 8.2, 7.6, palette);
+
+  // Bandeau de chasseur sylvestre orange
+  cell.rect(cx - 7, cy - 4, 15, 2, '#EA580C');
+  cell.rect(cx - 5, cy - 4, 11, 1, '#FDBA74');
+
+  cell.drawFace(cx, cy, state, frame, { cheekColor: '#FB923C', eyeSpan: 4 });
+  cell.drawNeedPoseOverlay(cx, cy, state, frame, palette);
+  cell.drawStateEffects(state, frame);
+}
+
+/**
+ * adult_flora_truffle : Truffignon (rond couleur noisette/mousse avec chapeau de champignon gourmand)
+ */
+function drawAdultFloraTruffle(cell, state, frame) {
+  const { dx, dy } = getMotionOffsets(state, frame);
+  const cx = 16 + dx;
+  const cy = 19 + dy;
+
+  cell.groundShadow(16 + dx, 28, 9.5, 1.9);
+
+  const palette = {
+    outline: '#432818',
+    base: '#D6C29F',
+    shade: '#A68A64',
+    highlight: '#F5EBE0',
+  };
+
+  drawWalkingFeet(cell, cx, cy, state, frame, palette.outline, '#65A30D', 6, 7);
+  cell.shadedBody(cx, cy, 9.2, 7.6, palette);
+
+  // Bavoir mousse & noisette sur le ventre
+  cell.rect(cx - 4, cy + 3, 9, 3, '#ECFCCB');
+  cell.dot(cx, cy + 4, '#84CC16');
+
+  // Grand chapeau de champignon rouge à pois crème façon toque gourmande
+  const capY = cy - 12;
+  cell.rect(cx - 6, capY + 2, 13, 3, palette.outline);
+  cell.rect(cx - 5, capY, 11, 4, '#E63946');
+  cell.rect(cx - 3, capY - 1, 7, 1, '#E63946');
+  // Pois blancs/crème du champignon
+  cell.rect(cx - 4, capY + 1, 2, 2, '#FFF8E7');
+  cell.rect(cx + 2, capY + 1, 2, 2, '#FFF8E7');
+  cell.dot(cx, capY, '#FFF8E7');
+
+  cell.drawFace(cx, cy - 1, state, frame, { cheekColor: '#F43F5E', eyeSpan: 4 });
+  cell.drawNeedPoseOverlay(cx, cy, state, frame, palette);
+  cell.drawStateEffects(state, frame);
+}
+
+/**
+ * adult_flora_thorn : Ronce-Noire (bois sombre et ronces violettes aux yeux ambrés)
+ */
+function drawAdultFloraThorn(cell, state, frame) {
+  const { dx, dy } = getMotionOffsets(state, frame);
+  const cx = 16 + dx;
+  const cy = 18 + dy;
+
+  cell.groundShadow(16 + dx, 28, 8.5, 1.8);
+
+  const palette = {
+    outline: '#120D0A',
+    base: '#4A3525',
+    shade: '#261C15',
+    highlight: '#7F5539',
+  };
+
+  // Cornes de ronces violettes au sommet
+  const hornY = cy - 10;
+  cell.rect(cx - 6, hornY + 1, 2, 3, '#7E22CE');
+  cell.dot(cx - 7, hornY, '#C084FC');
+  cell.rect(cx + 4, hornY + 1, 2, 3, '#7E22CE');
+  cell.dot(cx + 6, hornY, '#C084FC');
+
+  // Ronces/feuilles nocturnes flottantes sur les côtés
+  const vineY = cy - 1 + (frame % 2 === 0 ? -1 : 1);
+  cell.rect(cx - 11, vineY, 2, 3, '#9333EA');
+  cell.dot(cx - 11, vineY - 1, '#4ADE80');
+  cell.rect(cx + 9, vineY, 2, 3, '#9333EA');
+  cell.dot(cx + 10, vineY - 1, '#4ADE80');
+
+  drawWalkingFeet(cell, cx, cy, state, frame, palette.outline, '#7E22CE', 5, 7);
+  cell.shadedBody(cx, cy, 8.2, 7.6, palette);
+
+  cell.drawFace(cx, cy, state, frame, {
+    eyeColor: '#F59E0B',
+    eyeShine: '#FEF08A',
+    cheekColor: '#A855F7',
+    mouthColor: '#C084FC',
+    eyeSpan: 4,
+  });
+  cell.drawNeedPoseOverlay(cx, cy, state, frame, palette);
+  cell.drawStateEffects(state, frame);
+}
+
+// ----------------------------------------------------------------------------
+// 3.4. LIGNÉE ASTRALE / FLAMME (EMBER)
+// ----------------------------------------------------------------------------
+
+/**
+ * baby_ember : P'tite Braise orangée/rougeoyante avec flammèche sur la tête
+ */
+function drawBabyEmber(cell, state, frame) {
+  const { dx, dy } = getMotionOffsets(state, frame);
+  const cx = 16 + dx;
+  const cy = 19 + dy;
+
+  cell.groundShadow(16 + dx, 28, 8.5, 1.8);
+
+  const palette = {
+    outline: '#431407',
+    base: '#FB923C',
+    shade: '#EA580C',
+    highlight: '#FDE047',
+  };
+
+  const rx = state === 'sleep' ? 9.4 : 8.2;
+  const ry = state === 'sleep' ? 6.2 : 7.2;
+  cell.shadedBody(cx, cy, rx, ry, palette, 1);
+
+  // Petite flammèche dansante sur la tête
+  const topY = Math.round(cy - ry);
+  const flicker = frame % 2;
+  cell.rect(cx - 1, topY - 3, 3, 3, '#EF4444');
+  cell.rect(cx, topY - 4 - flicker, 2, 3, '#FACC15');
+  cell.dot(cx, topY - 2, '#FFFBEB');
+
+  cell.drawFace(cx, cy, state, frame, { cheekColor: '#EF4444', eyeSpan: 4 });
+  cell.drawNeedPoseOverlay(cx, cy, state, frame, palette);
+  cell.drawStateEffects(state, frame);
+}
+
+/**
+ * child_ember : Pyrolynx ardent avec oreilles de flamme et queue étincelante
+ */
+function drawChildEmber(cell, state, frame) {
+  const { dx, dy } = getMotionOffsets(state, frame);
+  const cx = 16 + dx;
+  const cy = 18 + dy;
+
+  cell.groundShadow(16 + dx, 28, 8.5, 1.8);
+
+  const palette = {
+    outline: '#450A0A',
+    base: '#F97316',
+    shade: '#DC2626',
+    highlight: '#FEF08A',
+  };
+
+  // Queue de flamme étincelante sur le côté droit
+  const tailFlicker = frame % 2;
+  cell.rect(cx + 8, cy + 1 - tailFlicker, 3, 3, '#EF4444');
+  cell.rect(cx + 9, cy - tailFlicker, 2, 2, '#FACC15');
+
+  // Oreilles de lynx ardentes
+  const earY = cy - 10;
+  cell.rect(cx - 6, earY, 3, 4, palette.outline);
+  cell.rect(cx - 5, earY + 1, 2, 2, '#FACC15');
+  cell.rect(cx + 3, earY, 3, 4, palette.outline);
+  cell.rect(cx + 3, earY + 1, 2, 2, '#FACC15');
+
+  drawWalkingFeet(cell, cx, cy, state, frame, palette.outline, '#DC2626', 5, 7);
+  cell.shadedBody(cx, cy, 8.0, 7.2, palette);
+
+  cell.drawFace(cx, cy, state, frame, { cheekColor: '#FACC15', eyeSpan: 4 });
+  cell.drawNeedPoseOverlay(cx, cy, state, frame, palette);
+  cell.drawStateEffects(state, frame);
+}
+
+/**
+ * adult_ember_solar : Solarix (or radieux, couronne solaire et ailes de lumière)
+ */
+function drawAdultEmberSolar(cell, state, frame) {
   const { dx, dy } = getMotionOffsets(state, frame);
   const cx = 16 + dx;
   const cy = 18 + dy;
@@ -599,50 +1241,37 @@ function drawAdultSolar(cell, state, frame) {
     highlight: '#FFF8B8',
   };
 
-  // Ailes célestes sur les côtés (battement doux)
+  // Ailes de lumière célestes sur les côtés
   const wingFlap = frame % 2 === 0 ? 0 : -1;
-  const wingLight = '#FFF8D6';
-  const wingGold = '#FFAE19';
-  // Aile gauche
-  cell.rect(cx - 11, cy - 3 + wingFlap, 3, 5, wingGold);
-  cell.rect(cx - 10, cy - 2 + wingFlap, 2, 3, wingLight);
-  // Aile droite
-  cell.rect(cx + 8, cy - 3 + wingFlap, 3, 5, wingGold);
-  cell.rect(cx + 8, cy - 2 + wingFlap, 2, 3, wingLight);
+  cell.rect(cx - 11, cy - 3 + wingFlap, 3, 5, '#FFAE19');
+  cell.rect(cx - 10, cy - 2 + wingFlap, 2, 3, '#FFF8D6');
+  cell.rect(cx + 8, cy - 3 + wingFlap, 3, 5, '#FFAE19');
+  cell.rect(cx + 8, cy - 2 + wingFlap, 2, 3, '#FFF8D6');
 
-  // Petits pieds dorés
-  const lfY = cy + 7 + (state === 'walk' && frame % 2 === 0 ? -1 : 0);
-  const rfY = cy + 7 + (state === 'walk' && frame % 2 === 1 ? -1 : 0);
-  cell.rect(cx - 5, lfY, 3, 2, '#D97706');
-  cell.rect(cx + 2, rfY, 3, 2, '#D97706');
-
-  // Corps solaire
+  drawWalkingFeet(cell, cx, cy, state, frame, palette.outline, '#D97706', 5, 7);
   cell.shadedBody(cx, cy, 8.5, 7.8, palette);
 
-  // Écusson ventral lumineux
+  // Écusson ventral solaire
   cell.rect(cx - 3, cy + 3, 6, 3, '#FFF3B0');
 
-  // Couronne solaire / auréole radieuse au sommet
+  // Couronne solaire radieuse au sommet
   const crownY = cy - 9;
   cell.rect(cx - 4, crownY, 9, 2, '#FF7B00');
   cell.rect(cx - 3, crownY, 7, 1, '#FFF75E');
-  // Pointes de la couronne
   cell.dot(cx - 4, crownY - 1, '#FF7B00');
   cell.dot(cx, crownY - 2, '#FFF75E');
   cell.dot(cx, crownY - 1, '#FF7B00');
   cell.dot(cx + 4, crownY - 1, '#FF7B00');
 
-  cell.drawFace(cx, cy - 1, state, frame, {
-    cheekColor: '#FF6B6B',
-    eyeSpan: 4,
-  });
+  cell.drawFace(cx, cy - 1, state, frame, { cheekColor: '#FF6B6B', eyeSpan: 4 });
+  cell.drawNeedPoseOverlay(cx, cy, state, frame, palette);
   cell.drawStateEffects(state, frame);
 }
 
 /**
- * 5. ADULT_ATHLETIC : Créature dynamique bleu électrique/orange avec bandeau sportif et oreilles dressées
+ * adult_ember_comet : Comète Fulgurante (bleu cosmique et feu doré, traînée d'étoiles)
  */
-function drawAdultAthletic(cell, state, frame) {
+function drawAdultEmberComet(cell, state, frame) {
   const { dx, dy } = getMotionOffsets(state, frame);
   const cx = 16 + dx;
   const cy = 18 + dy;
@@ -650,47 +1279,41 @@ function drawAdultAthletic(cell, state, frame) {
   cell.groundShadow(16 + dx, 28, 9, 1.8);
 
   const palette = {
-    outline: '#142858',
-    base: '#2B7FFF',
-    shade: '#1A56C4',
-    highlight: '#82BFFF',
+    outline: '#1E1B4B',
+    base: '#3B82F6',
+    shade: '#1D4ED8',
+    highlight: '#93C5FD',
   };
 
-  // Oreilles dressées énergiques (bleues à pointes orange)
+  // Oreilles/ailerons de comète en feu doré
   const earY = cy - 11;
   cell.rect(cx - 6, earY, 3, 5, palette.outline);
-  cell.rect(cx - 5, earY + 1, 2, 3, '#FF8C00');
+  cell.rect(cx - 5, earY + 1, 2, 3, '#FACC15');
   cell.rect(cx + 3, earY, 3, 5, palette.outline);
-  cell.rect(cx + 3, earY + 1, 2, 3, '#FF8C00');
+  cell.rect(cx + 3, earY + 1, 2, 3, '#FACC15');
 
-  // Jambes sportives avec baskets orange
-  const lfY = cy + 7 + (state === 'walk' && frame % 2 === 0 ? -2 : 0);
-  const rfY = cy + 7 + (state === 'walk' && frame % 2 === 1 ? -2 : 0);
-  cell.rect(cx - 5, lfY, 3, 2, '#FF5722');
-  cell.rect(cx + 2, rfY, 3, 2, '#FF5722');
+  // Traînée d'étoiles filantes derrière la comète
+  const starShift = frame % 2;
+  cell.rect(cx - 12, cy - 1 + starShift, 3, 2, '#FACC15');
+  cell.dot(cx - 13, cy - 3 + starShift, '#FEF08A');
+  cell.dot(cx + 10, cy - 2 + starShift, '#FACC15');
 
-  // Corps athlétique
+  drawWalkingFeet(cell, cx, cy, state, frame, palette.outline, '#F97316', 5, 7);
   cell.shadedBody(cx, cy, 8.2, 7.6, palette);
 
-  // Bandeau sportif orange vif sur le front + ruban flottant à gauche
-  const bandY = cy - 4;
-  cell.rect(cx - 7, bandY, 15, 2, '#FF5722');
-  cell.rect(cx - 5, bandY, 11, 1, '#FF9E00');
-  // Pans du bandeau qui flottent au vent
-  const tailShift = frame % 2 === 0 ? 0 : 1;
-  cell.rect(cx - 10, bandY + tailShift, 3, 2, '#FF5722');
+  // Bandeau/crête de feu stellaire doré et orange
+  cell.rect(cx - 7, cy - 4, 15, 2, '#F97316');
+  cell.rect(cx - 5, cy - 4, 11, 1, '#FACC15');
 
-  cell.drawFace(cx, cy, state, frame, {
-    cheekColor: '#FF9E00',
-    eyeSpan: 4,
-  });
+  cell.drawFace(cx, cy, state, frame, { cheekColor: '#FACC15', eyeSpan: 4 });
+  cell.drawNeedPoseOverlay(cx, cy, state, frame, palette);
   cell.drawStateEffects(state, frame);
 }
 
 /**
- * 6. ADULT_GOURMET : Créature ronde couleur pêche/fraise avec petite toque de chef et bavoir gourmand
+ * adult_ember_magma : Magma-Chef (rond rouge volcanique chaleureux avec toque de chef)
  */
-function drawAdultGourmet(cell, state, frame) {
+function drawAdultEmberMagma(cell, state, frame) {
   const { dx, dy } = getMotionOffsets(state, frame);
   const cx = 16 + dx;
   const cy = 19 + dy;
@@ -698,46 +1321,36 @@ function drawAdultGourmet(cell, state, frame) {
   cell.groundShadow(16 + dx, 28, 9.5, 1.9);
 
   const palette = {
-    outline: '#5E2135',
-    base: '#FF9EAA',
-    shade: '#E86F82',
-    highlight: '#FFD6DE',
+    outline: '#450A0A',
+    base: '#EF4444',
+    shade: '#B91C1C',
+    highlight: '#FCA5A5',
   };
 
-  // Petits pieds ronds
-  const lfY = cy + 7 + (state === 'walk' && frame % 2 === 0 ? -1 : 0);
-  const rfY = cy + 7 + (state === 'walk' && frame % 2 === 1 ? -1 : 0);
-  cell.rect(cx - 6, lfY, 3, 2, '#5E2135');
-  cell.rect(cx + 3, rfY, 3, 2, '#5E2135');
-
-  // Corps bien dodu
+  drawWalkingFeet(cell, cx, cy, state, frame, palette.outline, '#F97316', 6, 7);
   cell.shadedBody(cx, cy, 9.2, 7.6, palette);
 
-  // Bavoir blanc gourmand sur le ventre avec petit motif fraise/cœur
+  // Tablier de chef blanc avec petite flamme dorée sur le ventre
   cell.rect(cx - 4, cy + 3, 9, 3, '#FFFFFF');
-  cell.rect(cx - 3, cy + 6, 7, 1, '#E2E8F0');
-  cell.dot(cx, cy + 4, '#E63946');
+  cell.rect(cx - 3, cy + 6, 7, 1, '#FDE68A');
+  cell.rect(cx - 1, cy + 4, 2, 2, '#F97316');
 
-  // Toque de chef pâtissier blanche sur la tête (avec contour sombre net)
+  // Toque de chef volcanique blanche et bande dorée au sommet
   const hatY = cy - 12;
-  cell.rect(cx - 4, hatY, 9, 2, '#5E2135');     // Bord haut de la toque
-  cell.rect(cx - 5, hatY + 1, 11, 4, '#5E2135'); // Contour extérieur
-  cell.rect(cx - 4, hatY + 1, 9, 3, '#FFFFFF');  // Dôme blanc de la toque
-  cell.rect(cx - 3, hatY + 4, 7, 1, '#F4A261');  // Bande dorée/orangée de la toque
-  cell.dot(cx - 1, hatY + 1, '#E2E8F0');         // Pli de la toque
-  cell.dot(cx + 2, hatY + 1, '#E2E8F0');         // Pli de la toque
+  cell.rect(cx - 4, hatY, 9, 2, palette.outline);
+  cell.rect(cx - 5, hatY + 1, 11, 4, palette.outline);
+  cell.rect(cx - 4, hatY + 1, 9, 3, '#FFFFFF');
+  cell.rect(cx - 3, hatY + 4, 7, 1, '#F59E0B');
 
-  cell.drawFace(cx, cy - 1, state, frame, {
-    cheekColor: '#FF4D6D',
-    eyeSpan: 4,
-  });
+  cell.drawFace(cx, cy - 1, state, frame, { cheekColor: '#FBBF24', eyeSpan: 4 });
+  cell.drawNeedPoseOverlay(cx, cy, state, frame, palette);
   cell.drawStateEffects(state, frame);
 }
 
 /**
- * 7. ADULT_SHADOW : Créature violette/nocturne mystérieuse avec yeux ambrés lumineux et petites cornes/flammes
+ * adult_ember_eclipse : Éclipse Nocturne (violet cosmique sombre, halo d'éclipse et cornes astrales)
  */
-function drawAdultShadow(cell, state, frame) {
+function drawAdultEmberEclipse(cell, state, frame) {
   const { dx, dy } = getMotionOffsets(state, frame);
   const cx = 16 + dx;
   const cy = 18 + dy;
@@ -751,56 +1364,76 @@ function drawAdultShadow(cell, state, frame) {
     highlight: '#7C58B8',
   };
 
-  // Petites cornes mystiques violettes/lavande
+  // Halo d'éclipse solaire (anneau doré/violet derrière le sommet)
+  const haloY = cy - 11;
+  cell.rect(cx - 4, haloY, 9, 1, '#F59E0B');
+  cell.dot(cx - 5, haloY + 1, '#F59E0B');
+  cell.dot(cx + 5, haloY + 1, '#F59E0B');
+
+  // Cornes astrales violettes/lavande
   const hornY = cy - 10;
   cell.rect(cx - 6, hornY + 1, 2, 3, '#9D75E6');
-  cell.dot(cx - 7, hornY, '#C8B2F8');
+  cell.dot(cx - 7, hornY, '#FACC15');
   cell.rect(cx + 4, hornY + 1, 2, 3, '#9D75E6');
-  cell.dot(cx + 6, hornY, '#C8B2F8');
+  cell.dot(cx + 6, hornY, '#FACC15');
 
-  // Flammes spectrales flottantes autour de la créature
+  // Flammes spectrales cosmiques flottantes
   const wispY = cy - 2 + (frame % 2 === 0 ? -1 : 1);
   cell.rect(cx - 11, wispY, 2, 3, '#8A4FFF');
-  cell.dot(cx - 11, wispY - 1, '#38BDF8');
+  cell.dot(cx - 11, wispY - 1, '#FBBF24');
   cell.rect(cx + 9, wispY + 1, 2, 3, '#8A4FFF');
-  cell.dot(cx + 10, wispY, '#38BDF8');
+  cell.dot(cx + 10, wispY, '#FBBF24');
 
-  // Corps nocturne
   cell.shadedBody(cx, cy, 8.2, 7.6, palette);
 
-  // Base vaporeuse fantomatique
+  // Base vaporeuse astrale
   for (let i = -6; i <= 6; i += 3) {
     const wave = (frame + Math.abs(i)) % 2;
     cell.rect(cx + i, cy + 6 + wave, 2, 2, '#2F1B52');
   }
 
-  // Visage avec yeux ambrés lumineux
   cell.drawFace(cx, cy, state, frame, {
     eyeColor: '#FFB703',
     eyeShine: '#FFF3B0',
     cheekColor: '#9D4EDD',
-    mouthColor: '#38BDF8',
+    mouthColor: '#FBBF24',
     eyeSpan: 4,
   });
+  cell.drawNeedPoseOverlay(cx, cy, state, frame, palette);
   cell.drawStateEffects(state, frame);
 }
 
 const FORM_DRAWERS = {
   egg: drawEgg,
-  baby_blob: drawBabyBlob,
-  child_sprout: drawChildSprout,
-  adult_solar: drawAdultSolar,
-  adult_athletic: drawAdultAthletic,
-  adult_gourmet: drawAdultGourmet,
-  adult_shadow: drawAdultShadow,
+  // Lignée Aquatique (aqua)
+  baby_aqua: drawBabyAqua,
+  child_aqua: drawChildAqua,
+  adult_aqua_coral: drawAdultAquaCoral,
+  adult_aqua_leviathan: drawAdultAquaLeviathan,
+  adult_aqua_pearl: drawAdultAquaPearl,
+  adult_aqua_abyss: drawAdultAquaAbyss,
+  // Lignée Sylvestre (flora)
+  baby_flora: drawBabyFlora,
+  child_flora: drawChildFlora,
+  adult_flora_bloom: drawAdultFloraBloom,
+  adult_flora_raptor: drawAdultFloraRaptor,
+  adult_flora_truffle: drawAdultFloraTruffle,
+  adult_flora_thorn: drawAdultFloraThorn,
+  // Lignée Astrale / Flamme (ember)
+  baby_ember: drawBabyEmber,
+  child_ember: drawChildEmber,
+  adult_ember_solar: drawAdultEmberSolar,
+  adult_ember_comet: drawAdultEmberComet,
+  adult_ember_magma: drawAdultEmberMagma,
+  adult_ember_eclipse: drawAdultEmberEclipse,
 };
 
 // ============================================================================
-// 4. GÉNÉRATION DES SPRITESHEETS (256x384 px) ET DES ICÔNES (TRAY 32x32 & APP 256x256)
+// 4. GÉNÉRATION DES 19 SPRITESHEETS (256x512 px) ET DES ICÔNES (TRAY & APP)
 // ============================================================================
 
 function generateFormSpritesheet(formId, drawFn) {
-  const sheet = new PixelCanvas(256, 384); // 4 colonnes * 64px, 6 lignes * 64px
+  const sheet = new PixelCanvas(256, 512); // 4 colonnes * 64px, 8 lignes * 64px
 
   for (let row = 0; row < ROW_STATES.length; row++) {
     const state = ROW_STATES[row];
@@ -858,16 +1491,35 @@ function main() {
   fs.mkdirSync(ICONS_DIR, { recursive: true });
 
   const formsMeta = [
-    { id: 'egg', stage: 'egg', stageIndex: 0, name: 'Œuf Mystère' },
-    { id: 'baby_blob', stage: 'baby', stageIndex: 1, name: 'Bébé Blob' },
-    { id: 'child_sprout', stage: 'child', stageIndex: 2, name: 'Jeune Pousse' },
-    { id: 'adult_solar', stage: 'adult', stageIndex: 3, name: 'Adulte Solaire' },
-    { id: 'adult_athletic', stage: 'adult', stageIndex: 3, name: 'Adulte Athlétique' },
-    { id: 'adult_gourmet', stage: 'adult', stageIndex: 3, name: 'Adulte Gourmet' },
-    { id: 'adult_shadow', stage: 'adult', stageIndex: 3, name: 'Adulte Ombre' },
+    // 1. Œuf commun
+    { id: 'egg', stage: 'egg', stageIndex: 0, lineage: null, name: 'Œuf Mystique' },
+
+    // 2. Lignée Aquatique (aqua)
+    { id: 'baby_aqua', stage: 'baby', stageIndex: 1, lineage: 'aqua', name: "P'tit Goutte" },
+    { id: 'child_aqua', stage: 'child', stageIndex: 2, lineage: 'aqua', name: 'Ondine Vive' },
+    { id: 'adult_aqua_coral', stage: 'adult', stageIndex: 3, lineage: 'aqua', name: 'Corallia' },
+    { id: 'adult_aqua_leviathan', stage: 'adult', stageIndex: 3, lineage: 'aqua', name: 'Léviathan Azur' },
+    { id: 'adult_aqua_pearl', stage: 'adult', stageIndex: 3, lineage: 'aqua', name: 'Perle Gourmande' },
+    { id: 'adult_aqua_abyss', stage: 'adult', stageIndex: 3, lineage: 'aqua', name: 'Abyssal' },
+
+    // 3. Lignée Sylvestre (flora)
+    { id: 'baby_flora', stage: 'baby', stageIndex: 1, lineage: 'flora', name: "P'tit Bourgeon" },
+    { id: 'child_flora', stage: 'child', stageIndex: 2, lineage: 'flora', name: 'Feuillu Curieux' },
+    { id: 'adult_flora_bloom', stage: 'adult', stageIndex: 3, lineage: 'flora', name: 'Floramajesté' },
+    { id: 'adult_flora_raptor', stage: 'adult', stageIndex: 3, lineage: 'flora', name: 'Vélociflore' },
+    { id: 'adult_flora_truffle', stage: 'adult', stageIndex: 3, lineage: 'flora', name: 'Truffignon' },
+    { id: 'adult_flora_thorn', stage: 'adult', stageIndex: 3, lineage: 'flora', name: 'Ronce-Noire' },
+
+    // 4. Lignée Astrale / Flamme (ember)
+    { id: 'baby_ember', stage: 'baby', stageIndex: 1, lineage: 'ember', name: "P'tite Braise" },
+    { id: 'child_ember', stage: 'child', stageIndex: 2, lineage: 'ember', name: 'Pyrolynx' },
+    { id: 'adult_ember_solar', stage: 'adult', stageIndex: 3, lineage: 'ember', name: 'Solarix' },
+    { id: 'adult_ember_comet', stage: 'adult', stageIndex: 3, lineage: 'ember', name: 'Comète Fulgurante' },
+    { id: 'adult_ember_magma', stage: 'adult', stageIndex: 3, lineage: 'ember', name: 'Magma-Chef' },
+    { id: 'adult_ember_eclipse', stage: 'adult', stageIndex: 3, lineage: 'ember', name: 'Éclipse Nocturne' },
   ];
 
-  // 1. Générer les 7 spritesheets PNG (256x384)
+  // 1. Générer les 19 spritesheets PNG (256x512)
   for (const form of formsMeta) {
     const drawFn = FORM_DRAWERS[form.id];
     const pngBuf = generateFormSpritesheet(form.id, drawFn);
@@ -883,9 +1535,9 @@ function main() {
   }
 
   const manifest = {
-    version: 1,
+    version: 2,
     sheetWidth: 256,
-    sheetHeight: 384,
+    sheetHeight: 512,
     frameWidth: 64,
     frameHeight: 64,
     columns: 4,
@@ -897,6 +1549,8 @@ function main() {
       happy: 3,
       sleep: 4,
       sad: 5,
+      hungry: 6,
+      need_cuddle: 7,
     },
     forms: formsMeta.map((f) => ({
       ...f,

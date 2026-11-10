@@ -13,6 +13,9 @@ export const NEED_KEYS: readonly NeedKey[] = [
   'cleanliness',
 ] as const;
 
+/** Durée en ligne (ms) sans caresse au-delà de laquelle le familier réclame un câlin. */
+export const CUDDLE_NEGLECT_ONLINE_MS = 20 * 60 * 1000;
+
 /**
  * Borne une valeur de besoin dans l'intervalle [0, 100] et arrondit à 2 décimales.
  * Protège contre `NaN`, `+Infinity` et `-Infinity`.
@@ -38,7 +41,8 @@ export function getCriticalNeeds(needs: NeedsState, threshold: number): NeedKey[
 
 /**
  * Applique l'écoulement du temps (`deltaSeconds`) sur les 4 jauges de besoins,
- * l'âge du familier et le suivi des erreurs de soin (`careMistakes`).
+ * l'âge du familier, les demandes affectives (`needsCuddle`, `needsPlay`)
+ * et le suivi des erreurs de soin (`careMistakes`).
  */
 export function applyTickNeeds(
   pet: PetState,
@@ -70,18 +74,42 @@ export function applyTickNeeds(
     };
   }
 
-  const isOffline = options?.isOffline === true;
-  const deltaMinutes = deltaSeconds / 60;
-  const decayRates = pet.isSleeping
-    ? config.decayPerMinuteAsleep
-    : config.decayPerMinuteAwake;
-
   const prevNeeds: NeedsState = {
     hunger: clampNeed(pet.needs.hunger),
     energy: clampNeed(pet.needs.energy),
     happiness: clampNeed(pet.needs.happiness),
     cleanliness: clampNeed(pet.needs.cleanliness),
   };
+
+  const currentAge = Number.isFinite(pet.ageSeconds) && pet.ageSeconds >= 0 ? pet.ageSeconds : 0;
+  const nextAgeSeconds = Math.round((currentAge + deltaSeconds) * 100) / 100;
+
+  // Au stade d'œuf, les jauges ne baissent pas (l'œuf attend d'être cliqué pour éclore)
+  if (pet.stage === 'egg') {
+    return {
+      pet: {
+        ...pet,
+        ageSeconds: nextAgeSeconds,
+        needs: prevNeeds,
+        needsCuddle: false,
+        needsPlay: false,
+        discoveredForms: [...pet.discoveredForms],
+        position: { ...pet.position },
+        careStats: {
+          ...pet.careStats,
+          foodCategoryCounts: { ...pet.careStats.foodCategoryCounts },
+        },
+      },
+      needsDelta: zeroDelta,
+      floorApplied: false,
+    };
+  }
+
+  const isOffline = options?.isOffline === true;
+  const deltaMinutes = deltaSeconds / 60;
+  const decayRates = pet.isSleeping
+    ? config.decayPerMinuteAsleep
+    : config.decayPerMinuteAwake;
 
   const poopCount = Math.max(0, Number.isFinite(pet.poopCount) ? pet.poopCount : 0);
   const poopPenalty = poopCount * Math.max(0, config.poopPenaltyPerMinute) * deltaMinutes;
@@ -119,10 +147,6 @@ export function applyTickNeeds(
     needsDelta[key] = Math.round((clamped - previous) * 100) / 100;
   }
 
-  // Mise à jour de l'âge cumulé en secondes
-  const currentAge = Number.isFinite(pet.ageSeconds) && pet.ageSeconds >= 0 ? pet.ageSeconds : 0;
-  const nextAgeSeconds = Math.round((currentAge + deltaSeconds) * 100) / 100;
-
   // Gestion des erreurs de soin (careMistakes) lorsque des besoins sont sous le seuil critique
   let neglectSecondsAccumulator =
     Number.isFinite(pet.careStats.neglectSecondsAccumulator) &&
@@ -156,10 +180,26 @@ export function applyTickNeeds(
     }
   }
 
+  // Mise à jour automatique de needsCuddle et needsPlay
+  const longSinceLastPetOnline =
+    !isOffline &&
+    pet.lastPettedAt > 0 &&
+    pet.lastUpdatedAt + deltaSeconds * 1000 - pet.lastPettedAt >= CUDDLE_NEGLECT_ONLINE_MS;
+
+  const nextNeedsCuddle = pet.isSleeping
+    ? false
+    : Boolean(pet.needsCuddle) || nextNeeds.happiness < 55 || longSinceLastPetOnline;
+
+  const nextNeedsPlay = pet.isSleeping
+    ? false
+    : (Boolean(pet.needsPlay) || nextNeeds.happiness < 48) && nextNeeds.energy > 30;
+
   const updatedPet: PetState = {
     ...pet,
     ageSeconds: nextAgeSeconds,
     needs: nextNeeds,
+    needsCuddle: nextNeedsCuddle,
+    needsPlay: nextNeedsPlay,
     discoveredForms: [...pet.discoveredForms],
     position: { ...pet.position },
     careStats: {

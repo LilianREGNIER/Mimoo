@@ -2,6 +2,7 @@
  * Système d'évolution déterministe piloté par les définitions JSON (`data/species.json`).
  */
 
+import { FORM_TO_LINEAGE } from './saveSystem';
 import type {
   EvolutionCondition,
   FoodCategory,
@@ -41,6 +42,8 @@ export function getDominantFoodCategory(
 
 /**
  * Vérifie si l'état courant du familier satisfait une condition d'évolution.
+ * Note : l'œuf (`stage === 'egg'`) n'évolue que si `careStats.eggClicks >= minEggClicks` (ou 5 par défaut),
+ * il n'évolue jamais tout seul uniquement au temps.
  */
 export function isEvolutionConditionMet(
   pet: PetState,
@@ -48,6 +51,37 @@ export function isEvolutionConditionMet(
 ): boolean {
   if (pet.ageSeconds < condition.minAgeSeconds) {
     return false;
+  }
+
+  if (pet.stage === 'egg') {
+    const requiredEggClicks = condition.minEggClicks ?? 5;
+    if ((pet.careStats.eggClicks ?? 0) < requiredEggClicks) {
+      return false;
+    }
+  } else if (
+    condition.minEggClicks !== undefined &&
+    (pet.careStats.eggClicks ?? 0) < condition.minEggClicks
+  ) {
+    return false;
+  }
+
+  if (condition.minPcInputs !== undefined) {
+    const totalPcInputs =
+      (pet.careStats.pcMouseClicks ?? 0) + (pet.careStats.pcKeyPresses ?? 0);
+    if (totalPcInputs < condition.minPcInputs) {
+      return false;
+    }
+  }
+
+  if (condition.minCareActions !== undefined) {
+    const totalCareActions =
+      (pet.careStats.totalMeals ?? 0) +
+      (pet.careStats.totalGamesPlayed ?? 0) +
+      (pet.careStats.totalPets ?? 0) +
+      (pet.careStats.totalCleans ?? 0);
+    if (totalCareActions < condition.minCareActions) {
+      return false;
+    }
   }
 
   if (
@@ -64,9 +98,26 @@ export function isEvolutionConditionMet(
     return false;
   }
 
-  if (condition.preferredFoodCategory !== undefined) {
+  if (
+    condition.preferredFoodCategory !== undefined ||
+    (condition.allowedCategories !== undefined && condition.allowedCategories.length > 0)
+  ) {
     const dominantCategory = getDominantFoodCategory(pet.careStats.foodCategoryCounts);
-    if (dominantCategory !== condition.preferredFoodCategory) {
+    if (!dominantCategory) {
+      return false;
+    }
+
+    const allowed = new Set<FoodCategory>();
+    if (condition.preferredFoodCategory !== undefined) {
+      allowed.add(condition.preferredFoodCategory);
+    }
+    if (condition.allowedCategories !== undefined) {
+      for (const category of condition.allowedCategories) {
+        allowed.add(category);
+      }
+    }
+
+    if (!allowed.has(dominantCategory)) {
       return false;
     }
   }
@@ -88,10 +139,13 @@ export function isEvolutionConditionMet(
   return true;
 }
 
+/** Alias de `isEvolutionConditionMet` pour la vérification d'une condition d'évolution. */
+export const evaluateCondition = isEvolutionConditionMet;
+
 /**
  * Évalue si le familier peut évoluer vers une nouvelle forme selon `speciesList`.
  * Trie les branches par `priority` décroissante et peut chaîner plusieurs évolutions
- * si l'âge cumulé franchit plusieurs stades d'un seul coup.
+ * si toutes les conditions des stades successifs sont remplies.
  */
 export function evaluateEvolution(
   pet: PetState,
@@ -150,6 +204,7 @@ export function evaluateEvolution(
       ...currentPet,
       formId: targetForm.id,
       stage: targetForm.stage,
+      lineage: targetForm.lineage ?? FORM_TO_LINEAGE[targetForm.id] ?? currentPet.lineage,
       discoveredForms: updatedDiscovered,
     };
 

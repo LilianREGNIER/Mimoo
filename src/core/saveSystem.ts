@@ -8,6 +8,7 @@ import type {
   CareStats,
   FoodCategory,
   FormId,
+  LineageId,
   NeedsState,
   PetState,
   SaveDataV1,
@@ -18,30 +19,93 @@ import type {
 /** Version actuelle du schéma de sauvegarde. */
 export const CURRENT_SCHEMA_VERSION = 1 as const;
 
-/** Ensemble des identifiants de formes valides. */
-const VALID_FORM_IDS: readonly FormId[] = [
+/** Ensemble des 19 identifiants de formes valides. */
+export const VALID_FORM_IDS: readonly FormId[] = [
   'egg',
-  'baby_blob',
-  'child_sprout',
-  'adult_solar',
-  'adult_athletic',
-  'adult_gourmet',
-  'adult_shadow',
+  // Lignée Aquatique (aqua)
+  'baby_aqua',
+  'child_aqua',
+  'adult_aqua_coral',
+  'adult_aqua_leviathan',
+  'adult_aqua_pearl',
+  'adult_aqua_abyss',
+  // Lignée Sylvestre (flora)
+  'baby_flora',
+  'child_flora',
+  'adult_flora_bloom',
+  'adult_flora_raptor',
+  'adult_flora_truffle',
+  'adult_flora_thorn',
+  // Lignée Astrale / Flamme (ember)
+  'baby_ember',
+  'child_ember',
+  'adult_ember_solar',
+  'adult_ember_comet',
+  'adult_ember_magma',
+  'adult_ember_eclipse',
 ] as const;
 
 /** Correspondance entre une forme et son stade de vie. */
-const FORM_TO_STAGE: Record<FormId, StageId> = {
+export const FORM_TO_STAGE: Record<FormId, StageId> = {
   egg: 'egg',
-  baby_blob: 'baby',
-  child_sprout: 'child',
-  adult_solar: 'adult',
-  adult_athletic: 'adult',
-  adult_gourmet: 'adult',
-  adult_shadow: 'adult',
+  baby_aqua: 'baby',
+  child_aqua: 'child',
+  adult_aqua_coral: 'adult',
+  adult_aqua_leviathan: 'adult',
+  adult_aqua_pearl: 'adult',
+  adult_aqua_abyss: 'adult',
+  baby_flora: 'baby',
+  child_flora: 'child',
+  adult_flora_bloom: 'adult',
+  adult_flora_raptor: 'adult',
+  adult_flora_truffle: 'adult',
+  adult_flora_thorn: 'adult',
+  baby_ember: 'baby',
+  child_ember: 'child',
+  adult_ember_solar: 'adult',
+  adult_ember_comet: 'adult',
+  adult_ember_magma: 'adult',
+  adult_ember_eclipse: 'adult',
+};
+
+/** Correspondance entre une forme et sa lignée élémentaire. */
+export const FORM_TO_LINEAGE: Record<FormId, LineageId> = {
+  egg: 'none',
+  baby_aqua: 'aqua',
+  child_aqua: 'aqua',
+  adult_aqua_coral: 'aqua',
+  adult_aqua_leviathan: 'aqua',
+  adult_aqua_pearl: 'aqua',
+  adult_aqua_abyss: 'aqua',
+  baby_flora: 'flora',
+  child_flora: 'flora',
+  adult_flora_bloom: 'flora',
+  adult_flora_raptor: 'flora',
+  adult_flora_truffle: 'flora',
+  adult_flora_thorn: 'flora',
+  baby_ember: 'ember',
+  child_ember: 'ember',
+  adult_ember_solar: 'ember',
+  adult_ember_comet: 'ember',
+  adult_ember_magma: 'ember',
+  adult_ember_eclipse: 'ember',
+};
+
+/** Table de migration automatique des anciens identifiants de formes vers les 19 formes actuelles. */
+export const LEGACY_FORM_MIGRATION: Readonly<Record<string, FormId>> = {
+  baby_blob: 'baby_aqua',
+  child_sprout: 'child_flora',
+  adult_solar: 'adult_ember_solar',
+  adult_athletic: 'adult_ember_comet',
+  adult_gourmet: 'adult_ember_magma',
+  adult_shadow: 'adult_ember_eclipse',
 };
 
 /** Ensemble des stades valides. */
 const VALID_STAGE_IDS: readonly StageId[] = ['egg', 'baby', 'child', 'adult'] as const;
+
+/** Ensemble des lignées valides. */
+const VALID_LINEAGE_IDS: readonly LineageId[] = ['none', 'aqua', 'flora', 'ember'] as const;
 
 /**
  * Crée les préférences utilisateur par défaut.
@@ -60,7 +124,10 @@ export function createDefaultSettings(): UserSettings {
 /**
  * Crée les statistiques de soin initiales d'un nouveau familier.
  */
-export function createInitialCareStats(): CareStats {
+export function createInitialCareStats(nowMs?: number): CareStats {
+  const safeNow =
+    typeof nowMs === 'number' && Number.isFinite(nowMs) ? nowMs : Date.now();
+
   return {
     totalMeals: 0,
     foodCategoryCounts: {
@@ -75,6 +142,11 @@ export function createInitialCareStats(): CareStats {
     totalCleans: 0,
     careMistakes: 0,
     neglectSecondsAccumulator: 0,
+    eggClicks: 0,
+    pcMouseClicks: 0,
+    pcKeyPresses: 0,
+    pcActiveSeconds: 0,
+    lastPlayedAt: safeNow,
   };
 }
 
@@ -91,6 +163,7 @@ export function createInitialPetState(name?: string, nowMs?: number): PetState {
     name: safeName,
     formId: 'egg',
     stage: 'egg',
+    lineage: 'none',
     bornAt: safeNow,
     lastUpdatedAt: safeNow,
     ageSeconds: 0,
@@ -102,10 +175,13 @@ export function createInitialPetState(name?: string, nowMs?: number): PetState {
     },
     isSleeping: false,
     poopCount: 0,
+    cleaningProgress: 0,
+    needsCuddle: false,
+    needsPlay: false,
     lastPettedAt: 0,
     discoveredForms: ['egg'],
     position: { x: 240, y: 240 },
-    careStats: createInitialCareStats(),
+    careStats: createInitialCareStats(safeNow),
   };
 }
 
@@ -128,12 +204,16 @@ function isPlainObject(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
 
-function isValidFormId(value: unknown): value is FormId {
+export function isValidFormId(value: unknown): value is FormId {
   return typeof value === 'string' && (VALID_FORM_IDS as readonly string[]).includes(value);
 }
 
 function isValidStageId(value: unknown): value is StageId {
   return typeof value === 'string' && (VALID_STAGE_IDS as readonly string[]).includes(value);
+}
+
+function isValidLineageId(value: unknown): value is LineageId {
+  return typeof value === 'string' && (VALID_LINEAGE_IDS as readonly string[]).includes(value);
 }
 
 function sanitizeNonNegativeNumber(
@@ -146,6 +226,13 @@ function sanitizeNonNegativeNumber(
     return value;
   }
   warnings.push(`Champ numérique invalide ou manquant (${fieldName}), remplacé par ${fallback}.`);
+  return fallback;
+}
+
+function sanitizeOptionalNonNegativeNumber(value: unknown, fallback: number): number {
+  if (typeof value === 'number' && Number.isFinite(value) && value >= 0) {
+    return value;
+  }
   return fallback;
 }
 
@@ -224,12 +311,19 @@ export function validateAndMigrateSaveData(
           return defaults.name;
         })();
 
-  const formId: FormId = isValidFormId(rawPet.formId)
-    ? rawPet.formId
-    : (() => {
-        warnings.push(`FormId invalide (${String(rawPet.formId)}), repli sur 'egg'.`);
-        return 'egg' as const;
-      })();
+  let formId: FormId;
+  if (isValidFormId(rawPet.formId)) {
+    formId = rawPet.formId;
+  } else if (typeof rawPet.formId === 'string' && rawPet.formId in LEGACY_FORM_MIGRATION) {
+    formId = LEGACY_FORM_MIGRATION[rawPet.formId];
+    migrated = true;
+    warnings.push(
+      `Migration de l'ancien formId '${rawPet.formId}' vers '${formId}'.`
+    );
+  } else {
+    warnings.push(`FormId invalide (${String(rawPet.formId)}), repli sur 'egg'.`);
+    formId = 'egg';
+  }
 
   const stage: StageId = isValidStageId(rawPet.stage)
     ? rawPet.stage
@@ -237,6 +331,14 @@ export function validateAndMigrateSaveData(
         warnings.push(`Stage invalide (${String(rawPet.stage)}), déduit depuis formId.`);
         return FORM_TO_STAGE[formId];
       })();
+
+  const expectedLineage = FORM_TO_LINEAGE[formId];
+  const lineage: LineageId =
+    formId !== 'egg'
+      ? expectedLineage
+      : isValidLineageId(rawPet.lineage)
+        ? rawPet.lineage
+        : expectedLineage;
 
   const bornAt = sanitizeNonNegativeNumber(rawPet.bornAt, safeNow, warnings, 'pet.bornAt');
   const lastUpdatedAt = sanitizeNonNegativeNumber(
@@ -279,6 +381,29 @@ export function validateAndMigrateSaveData(
   const poopCount = Math.floor(
     sanitizeNonNegativeNumber(rawPet.poopCount, 0, warnings, 'pet.poopCount')
   );
+
+  const cleaningProgress =
+    stage === 'egg'
+      ? 0
+      : Math.min(
+          100,
+          Math.max(0, sanitizeOptionalNonNegativeNumber(rawPet.cleaningProgress, 0))
+        );
+
+  const needsCuddle =
+    stage === 'egg'
+      ? false
+      : typeof rawPet.needsCuddle === 'boolean'
+        ? rawPet.needsCuddle
+        : false;
+
+  const needsPlay =
+    stage === 'egg'
+      ? false
+      : typeof rawPet.needsPlay === 'boolean'
+        ? rawPet.needsPlay
+        : false;
+
   const lastPettedAt = sanitizeNonNegativeNumber(
     rawPet.lastPettedAt,
     0,
@@ -291,6 +416,9 @@ export function validateAndMigrateSaveData(
     for (const item of rawPet.discoveredForms) {
       if (isValidFormId(item)) {
         discoveredSet.add(item);
+      } else if (typeof item === 'string' && item in LEGACY_FORM_MIGRATION) {
+        discoveredSet.add(LEGACY_FORM_MIGRATION[item]);
+        migrated = true;
       }
     }
   } else {
@@ -333,6 +461,7 @@ export function validateAndMigrateSaveData(
       typeof val === 'number' && Number.isFinite(val) && val >= 0 ? Math.floor(val) : 0;
   }
 
+  const defaultEggClicks = stage === 'egg' ? 0 : 5;
   const careStats: CareStats = {
     totalMeals: Math.floor(
       sanitizeNonNegativeNumber(rawCareStats.totalMeals, 0, warnings, 'careStats.totalMeals')
@@ -379,6 +508,17 @@ export function validateAndMigrateSaveData(
       warnings,
       'careStats.neglectSecondsAccumulator'
     ),
+    eggClicks: Math.floor(
+      sanitizeOptionalNonNegativeNumber(rawCareStats.eggClicks, defaultEggClicks)
+    ),
+    pcMouseClicks: Math.floor(
+      sanitizeOptionalNonNegativeNumber(rawCareStats.pcMouseClicks, 0)
+    ),
+    pcKeyPresses: Math.floor(
+      sanitizeOptionalNonNegativeNumber(rawCareStats.pcKeyPresses, 0)
+    ),
+    pcActiveSeconds: sanitizeOptionalNonNegativeNumber(rawCareStats.pcActiveSeconds, 0),
+    lastPlayedAt: sanitizeOptionalNonNegativeNumber(rawCareStats.lastPlayedAt, safeNow),
   };
 
   const defaultSettings = createDefaultSettings();
@@ -428,12 +568,16 @@ export function validateAndMigrateSaveData(
       name,
       formId,
       stage,
+      lineage,
       bornAt,
       lastUpdatedAt,
       ageSeconds,
       needs,
       isSleeping,
       poopCount,
+      cleaningProgress,
+      needsCuddle,
+      needsPlay,
       lastPettedAt,
       discoveredForms: Array.from(discoveredSet),
       position,

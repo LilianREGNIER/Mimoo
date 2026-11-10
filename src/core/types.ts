@@ -6,15 +6,36 @@
 /** Stades du cycle de vie du familier. */
 export type StageId = 'egg' | 'baby' | 'child' | 'adult';
 
-/** Identifiants uniques des 7 formes d'évolution disponibles dans `data/species.json`. */
+/** Lignées élémentaires disponibles pour le familier ('none' au stade d'œuf). */
+export type LineageId = 'none' | 'aqua' | 'flora' | 'ember';
+
+/** Identifiants des 3 starters bébés possibles à l'éclosion de l'œuf. */
+export type StarterFormId = 'baby_aqua' | 'baby_flora' | 'baby_ember';
+
+/** Identifiants uniques des 19 formes d'évolution disponibles dans `data/species.json`. */
 export type FormId =
   | 'egg'
-  | 'baby_blob'
-  | 'child_sprout'
-  | 'adult_solar'
-  | 'adult_athletic'
-  | 'adult_gourmet'
-  | 'adult_shadow';
+  // Lignée Aquatique (aqua)
+  | 'baby_aqua'
+  | 'child_aqua'
+  | 'adult_aqua_coral'
+  | 'adult_aqua_leviathan'
+  | 'adult_aqua_pearl'
+  | 'adult_aqua_abyss'
+  // Lignée Sylvestre (flora)
+  | 'baby_flora'
+  | 'child_flora'
+  | 'adult_flora_bloom'
+  | 'adult_flora_raptor'
+  | 'adult_flora_truffle'
+  | 'adult_flora_thorn'
+  // Lignée Astrale / Flamme (ember)
+  | 'baby_ember'
+  | 'child_ember'
+  | 'adult_ember_solar'
+  | 'adult_ember_comet'
+  | 'adult_ember_magma'
+  | 'adult_ember_eclipse';
 
 /** États de la machine à états d'animation du familier sur le Canvas 2D. */
 export type AnimationState =
@@ -25,7 +46,11 @@ export type AnimationState =
   | 'play'
   | 'sleep'
   | 'sad'
-  | 'evolve';
+  | 'evolve'
+  | 'hungry'
+  | 'need_cuddle'
+  | 'need_play'
+  | 'cleaning';
 
 /** Clés des 4 jauges de besoins fondamentaux. */
 export type NeedKey = 'hunger' | 'energy' | 'happiness' | 'cleanliness';
@@ -81,7 +106,7 @@ export interface MiniGameResult {
   won: boolean;
 }
 
-/** Statistiques cumulées de soin déterminant les branches d'évolution. */
+/** Statistiques cumulées de soin et d'activité PC déterminant les branches d'évolution. */
 export interface CareStats {
   /** Nombre total de repas donnés au familier. */
   totalMeals: number;
@@ -99,18 +124,36 @@ export interface CareStats {
   careMistakes: number;
   /** Accumulateur (en secondes) du temps passé avec au moins un besoin sous le seuil critique. */
   neglectSecondsAccumulator: number;
+  /** Clics effectués sur l'œuf (éclot à `eggClicksRequired`, par défaut 5). */
+  eggClicks: number;
+  /** Nombre cumulé de clics souris détectés sur le PC. */
+  pcMouseClicks: number;
+  /** Nombre cumulé de touches clavier pressées sur le PC (compteur anonyme). */
+  pcKeyPresses: number;
+  /** Secondes cumulées d'activité PC. */
+  pcActiveSeconds: number;
+  /** Timestamp UTC (ms) du dernier mini-jeu joué pour détecter le besoin de jouer. */
+  lastPlayedAt: number;
 }
 
 /** Condition déterministe permettant d'évoluer vers une forme cible. */
 export interface EvolutionCondition {
   /** Âge minimum requis en secondes pour déclencher cette évolution. */
   minAgeSeconds: number;
+  /** Nombre minimal de clics sur l'œuf requis pour l'éclosion. */
+  minEggClicks?: number;
+  /** Nombre minimal d'entrées PC requis (`pcMouseClicks + pcKeyPresses`). */
+  minPcInputs?: number;
+  /** Nombre minimal d'actions de soin requis (`totalMeals + totalGamesPlayed + totalPets + totalCleans`). */
+  minCareActions?: number;
   /** Nombre maximal d'erreurs de soin tolérées (inclusif). */
   maxCareMistakes?: number;
   /** Nombre minimal d'erreurs de soin requis (inclusif). */
   minCareMistakes?: number;
   /** Catégorie alimentaire devant être la plus fréquente (ou privilégiée). */
   preferredFoodCategory?: FoodCategory;
+  /** Catégories alimentaires alternatives acceptées comme dominantes (en complément de `preferredFoodCategory`). */
+  allowedCategories?: FoodCategory[];
   /** Nombre minimal de parties de mini-jeux jouées. */
   minGamesPlayed?: number;
   /** Niveau minimal de bonheur requis au moment de l'évaluation. */
@@ -135,6 +178,8 @@ export interface SpeciesFormDefinition {
   name: string;
   /** Stade de vie correspondant. */
   stage: StageId;
+  /** Lignée élémentaire à laquelle appartient cette forme. */
+  lineage?: LineageId;
   /** Description encyclopédique pour le Compendium. */
   description: string;
   /** Chemin relatif vers la sprite sheet ou l'asset de la forme. */
@@ -149,6 +194,8 @@ export interface SpeciesFormDefinition {
 
 /** Paramètres globaux d'équilibrage chargés depuis `data/game-config.json`. */
 export interface GameConfig {
+  /** Nombre de clics requis sur l'œuf pour déclencher son éclosion interactive. */
+  eggClicksRequired: number;
   /** Taux de baisse par minute pour chaque besoin lorsque le familier est éveillé. */
   decayPerMinuteAwake: NeedsState;
   /** Taux de baisse par minute pour chaque besoin lorsque le familier dort. */
@@ -167,7 +214,7 @@ export interface GameConfig {
   petCooldownMs: number;
   /** Bonus de bonheur octroyé par une caresse valide. */
   petHappinessBonus: number;
-  /** Gain de propreté octroyé par une action de nettoyage. */
+  /** Gain de propreté octroyé par une action de nettoyage complet. */
   cleanlinessBonusPerClean: number;
   /** Pénalité supplémentaire de propreté par minute pour chaque salissure présente. */
   poopPenaltyPerMinute: number;
@@ -199,6 +246,8 @@ export interface PetState {
   formId: FormId;
   /** Stade actuel du cycle de vie. */
   stage: StageId;
+  /** Lignée élémentaire du familier ('none' tant qu'il est un œuf). */
+  lineage: LineageId;
   /** Timestamp UTC (ms) de naissance du familier. */
   bornAt: number;
   /** Timestamp UTC (ms) de la dernière mise à jour d'état. */
@@ -211,6 +260,12 @@ export interface PetState {
   isSleeping: boolean;
   /** Nombre de salissures présentes autour du familier. */
   poopCount: number;
+  /** Progression du brossage à l'éponge en cours (0 à 100). */
+  cleaningProgress: number;
+  /** Indique si le familier réclame actuellement un câlin. */
+  needsCuddle: boolean;
+  /** Indique si le familier réclame actuellement de jouer. */
+  needsPlay: boolean;
   /** Timestamp UTC (ms) de la dernière caresse prise en compte. */
   lastPettedAt: number;
   /** Liste des formes déjà découvertes (Compendium). */
@@ -269,8 +324,16 @@ export type TrayActionType =
   | 'toggle-sleep'
   | 'clean'
   | 'open-compendium'
+  | 'open-sandbox'
   | 'center-pet'
   | 'reset-pet';
+
+/** Lot d'activité PC agrégé et anonymisé envoyé par le processus principal Electron. */
+export interface PcActivityBatch {
+  mouseClicks: number;
+  keyPresses: number;
+  activeSeconds: number;
+}
 
 /** Charge utile initiale renvoyée au Renderer lors de l'initialisation IPC. */
 export interface BootstrapPayload {
@@ -312,6 +375,10 @@ export interface PetIPCContract {
   onTrayAction(callback: (action: TrayActionType) => void): () => void;
   /** Écoute les changements de topologie d'écrans (ajout/retrait/résolution). */
   onDisplayChanged(callback: (displays: DisplayBoundsInfo[]) => void): () => void;
+  /** Écoute les lots périodiques d'activité PC (clics souris, frappes clavier anonymes, secondes actives). */
+  onPcActivityBatch?(
+    callback: (batch: { mouseClicks: number; keyPresses: number; activeSeconds: number }) => void
+  ): () => void;
 }
 
 declare global {

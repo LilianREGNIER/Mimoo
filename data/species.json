@@ -3,121 +3,429 @@
     "id": "egg",
     "name": "Œuf Étoilé",
     "stage": "egg",
-    "description": "Un œuf tiède aux motifs célestes qui oscille doucement en attendant d'éclore.",
+    "lineage": "none",
+    "description": "Un œuf tiède aux motifs célestes qui oscille doucement et se fissure sous vos clics attentifs avant de révéler sa lignée.",
     "spriteSheet": "sprites/egg.png",
     "scale": 1.0,
     "walkSpeed": 0,
     "evolutions": [
       {
-        "targetFormId": "baby_blob",
+        "targetFormId": "baby_aqua",
         "condition": {
-          "minAgeSeconds": 60,
+          "minAgeSeconds": 0,
+          "minEggClicks": 5,
+          "priority": 100
+        }
+      },
+      {
+        "targetFormId": "baby_flora",
+        "condition": {
+          "minAgeSeconds": 0,
+          "minEggClicks": 5,
+          "priority": 100
+        }
+      },
+      {
+        "targetFormId": "baby_ember",
+        "condition": {
+          "minAgeSeconds": 0,
+          "minEggClicks": 5,
           "priority": 100
         }
       }
     ]
   },
   {
-    "id": "baby_blob",
+    "id": "baby_aqua",
     "name": "P'tit Goutte",
     "stage": "baby",
-    "description": "Un nourrisson curieux et rebondissant qui découvre votre bureau avec émerveillement.",
-    "spriteSheet": "sprites/baby_blob.png",
+    "lineage": "aqua",
+    "description": "Un nourrisson aquatique translucide et rebondissant qui laisse de petites bulles fraîches sur votre bureau.",
+    "spriteSheet": "sprites/baby_aqua.png",
     "scale": 1.0,
     "walkSpeed": 38,
     "evolutions": [
       {
-        "targetFormId": "child_sprout",
+        "targetFormId": "child_aqua",
         "condition": {
-          "minAgeSeconds": 300,
+          "minAgeSeconds": 36000,
+          "minPcInputs": 10000,
+          "minCareActions": 10,
           "priority": 100
         }
       }
     ]
   },
   {
-    "id": "child_sprout",
-    "name": "Bourgeon Vif",
+    "id": "child_aqua",
+    "name": "Ondine Vive",
     "stage": "child",
-    "description": "Un jeune familier plein d'entrain dont la feuille sur la tête réagit à vos soins quotidiens.",
-    "spriteSheet": "sprites/child_sprout.png",
+    "lineage": "aqua",
+    "description": "Un jeune esprit des eaux aux nageoires frétillantes qui adore suivre le rythme de votre curseur.",
+    "spriteSheet": "sprites/child_aqua.png",
     "scale": 1.05,
     "walkSpeed": 55,
     "evolutions": [
       {
-        "targetFormId": "adult_solar",
+        "targetFormId": "adult_aqua_coral",
         "condition": {
-          "minAgeSeconds": 900,
+          "minAgeSeconds": 144000,
+          "minPcInputs": 40000,
+          "minCareActions": 35,
           "maxCareMistakes": 1,
           "minHappiness": 75,
+          "preferredFoodCategory": "healthy",
           "priority": 100
         }
       },
       {
-        "targetFormId": "adult_athletic",
+        "targetFormId": "adult_aqua_leviathan",
         "condition": {
-          "minAgeSeconds": 900,
+          "minAgeSeconds": 144000,
+          "minPcInputs": 40000,
+          "minCareActions": 35,
           "maxCareMistakes": 3,
-          "minGamesPlayed": 3,
+          "minGamesPlayed": 8,
+          "priority": 85
+        }
+      },
+      {
+        "targetFormId": "adult_aqua_leviathan",
+        "condition": {
+          "minAgeSeconds": 144000,
+          "minPcInputs": 40000,
+          "minCareActions": 35,
+          "maxCareMistakes": 3,
+          "preferredFoodCategory": "energizing",
           "priority": 80
         }
       },
       {
-        "targetFormId": "adult_gourmet",
+        "targetFormId": "adult_aqua_pearl",
         "condition": {
-          "minAgeSeconds": 900,
+          "minAgeSeconds": 144000,
+          "minPcInputs": 40000,
+          "minCareActions": 35,
           "maxCareMistakes": 3,
-          "preferredFoodCategory": "gourmet",
+          "allowedCategories": ["gourmet", "snack"],
           "priority": 60
         }
       },
       {
-        "targetFormId": "adult_shadow",
+        "targetFormId": "adult_aqua_abyss",
         "condition": {
-          "minAgeSeconds": 900,
+          "minAgeSeconds": 144000,
+          "minPcInputs": 40000,
+          "minCareActions": 35,
           "priority": 10
         }
       }
     ]
   },
   {
-    "id": "adult_solar",
-    "name": "Solarix",
+    "id": "adult_aqua_coral",
+    "name": "Corallia",
     "stage": "adult",
-    "description": "Forme radieuse obtenue grâce à des soins exemplaires et un bonheur constant.",
-    "spriteSheet": "sprites/adult_solar.png",
+    "lineage": "aqua",
+    "description": "Gardienne des récifs aux couronnes coralliennes scintillantes, épanouie grâce à des soins exemplaires et une alimentation saine.",
+    "spriteSheet": "sprites/adult_aqua_coral.png",
     "scale": 1.15,
     "walkSpeed": 62,
     "evolutions": []
   },
   {
-    "id": "adult_athletic",
-    "name": "Voltigeur",
+    "id": "adult_aqua_leviathan",
+    "name": "Léviathan Azur",
     "stage": "adult",
-    "description": "Forme dynamique et agile forgée par de nombreuses sessions d'entraînement et de mini-jeux.",
-    "spriteSheet": "sprites/adult_athletic.png",
-    "scale": 1.15,
-    "walkSpeed": 82,
+    "lineage": "aqua",
+    "description": "Dragon marin élancé et infatigable, forgé par l'entraînement sportif, les mini-jeux et les baies toniques.",
+    "spriteSheet": "sprites/adult_aqua_leviathan.png",
+    "scale": 1.2,
+    "walkSpeed": 84,
     "evolutions": []
   },
   {
-    "id": "adult_gourmet",
-    "name": "Bistronome",
+    "id": "adult_aqua_pearl",
+    "name": "Perle Gourmande",
     "stage": "adult",
-    "description": "Forme joviale au palais raffiné, élevée avec les meilleurs mets gastronomiques.",
-    "spriteSheet": "sprites/adult_gourmet.png",
-    "scale": 1.2,
+    "lineage": "aqua",
+    "description": "Créature nacrée et rondelette au sourire radieux, grande amatrice de festins gastronomiques et de douceurs.",
+    "spriteSheet": "sprites/adult_aqua_pearl.png",
+    "scale": 1.18,
     "walkSpeed": 48,
     "evolutions": []
   },
   {
-    "id": "adult_shadow",
-    "name": "Noctambule",
+    "id": "adult_aqua_abyss",
+    "name": "Abyssal",
     "stage": "adult",
-    "description": "Forme mystérieuse et indépendante qui s'épanouit même après quelques oublis de soin.",
-    "spriteSheet": "sprites/adult_shadow.png",
+    "lineage": "aqua",
+    "description": "Entité bioluminescente des grandes profondeurs, solitaire et mystérieuse, forgée par une vie mouvementée.",
+    "spriteSheet": "sprites/adult_aqua_abyss.png",
     "scale": 1.15,
     "walkSpeed": 58,
+    "evolutions": []
+  },
+  {
+    "id": "baby_flora",
+    "name": "P'tit Bourgeon",
+    "stage": "baby",
+    "lineage": "flora",
+    "description": "Une petite pousse verdoyante et curieuse dont la feuille au sommet du crâne frémit au moindre clic.",
+    "spriteSheet": "sprites/baby_flora.png",
+    "scale": 1.0,
+    "walkSpeed": 36,
+    "evolutions": [
+      {
+        "targetFormId": "child_flora",
+        "condition": {
+          "minAgeSeconds": 36000,
+          "minPcInputs": 10000,
+          "minCareActions": 10,
+          "priority": 100
+        }
+      }
+    ]
+  },
+  {
+    "id": "child_flora",
+    "name": "Feuillu Curieux",
+    "stage": "child",
+    "lineage": "flora",
+    "description": "Un jeune compagnon sylvestre vêtu d'une collerette de feuilles qui gambade joyeusement d'un bout à l'autre de l'écran.",
+    "spriteSheet": "sprites/child_flora.png",
+    "scale": 1.05,
+    "walkSpeed": 56,
+    "evolutions": [
+      {
+        "targetFormId": "adult_flora_bloom",
+        "condition": {
+          "minAgeSeconds": 144000,
+          "minPcInputs": 40000,
+          "minCareActions": 35,
+          "maxCareMistakes": 1,
+          "minHappiness": 75,
+          "preferredFoodCategory": "healthy",
+          "priority": 100
+        }
+      },
+      {
+        "targetFormId": "adult_flora_raptor",
+        "condition": {
+          "minAgeSeconds": 144000,
+          "minPcInputs": 40000,
+          "minCareActions": 35,
+          "maxCareMistakes": 3,
+          "minGamesPlayed": 8,
+          "priority": 85
+        }
+      },
+      {
+        "targetFormId": "adult_flora_raptor",
+        "condition": {
+          "minAgeSeconds": 144000,
+          "minPcInputs": 40000,
+          "minCareActions": 35,
+          "maxCareMistakes": 3,
+          "preferredFoodCategory": "energizing",
+          "priority": 80
+        }
+      },
+      {
+        "targetFormId": "adult_flora_truffle",
+        "condition": {
+          "minAgeSeconds": 144000,
+          "minPcInputs": 40000,
+          "minCareActions": 35,
+          "maxCareMistakes": 3,
+          "allowedCategories": ["gourmet", "snack"],
+          "priority": 60
+        }
+      },
+      {
+        "targetFormId": "adult_flora_thorn",
+        "condition": {
+          "minAgeSeconds": 144000,
+          "minPcInputs": 40000,
+          "minCareActions": 35,
+          "priority": 10
+        }
+      }
+    ]
+  },
+  {
+    "id": "adult_flora_bloom",
+    "name": "Floramajesté",
+    "stage": "adult",
+    "lineage": "flora",
+    "description": "Esprit royal de la canopée couronné de fleurs éternelles, fruit d'une attention constante et d'une vie harmonieuse.",
+    "spriteSheet": "sprites/adult_flora_bloom.png",
+    "scale": 1.15,
+    "walkSpeed": 60,
+    "evolutions": []
+  },
+  {
+    "id": "adult_flora_raptor",
+    "name": "Vélociflore",
+    "stage": "adult",
+    "lineage": "flora",
+    "description": "Sprinter végétal aux plumes de fougère aérodynamiques, toujours prêt à bondir dans une nouvelle partie.",
+    "spriteSheet": "sprites/adult_flora_raptor.png",
+    "scale": 1.18,
+    "walkSpeed": 86,
+    "evolutions": []
+  },
+  {
+    "id": "adult_flora_truffle",
+    "name": "Truffignon",
+    "stage": "adult",
+    "lineage": "flora",
+    "description": "Bon vivant des sous-bois au chapeau fongique parfumé, fin connaisseur des meilleures douceurs de la forêt.",
+    "spriteSheet": "sprites/adult_flora_truffle.png",
+    "scale": 1.2,
+    "walkSpeed": 46,
+    "evolutions": []
+  },
+  {
+    "id": "adult_flora_thorn",
+    "name": "Ronce-Noire",
+    "stage": "adult",
+    "lineage": "flora",
+    "description": "Gardien épineux au caractère rebelle et farouche, qui a appris à se défendre seul dans les bois ombragés.",
+    "spriteSheet": "sprites/adult_flora_thorn.png",
+    "scale": 1.15,
+    "walkSpeed": 58,
+    "evolutions": []
+  },
+  {
+    "id": "baby_ember",
+    "name": "P'tite Braise",
+    "stage": "baby",
+    "lineage": "ember",
+    "description": "Une étincelle vivante et chaleureuse qui crépite doucement d'enthousiasme près de votre barre des tâches.",
+    "spriteSheet": "sprites/baby_ember.png",
+    "scale": 1.0,
+    "walkSpeed": 40,
+    "evolutions": [
+      {
+        "targetFormId": "child_ember",
+        "condition": {
+          "minAgeSeconds": 36000,
+          "minPcInputs": 10000,
+          "minCareActions": 10,
+          "priority": 100
+        }
+      }
+    ]
+  },
+  {
+    "id": "child_ember",
+    "name": "Pyrolynx",
+    "stage": "child",
+    "lineage": "ember",
+    "description": "Un jeune félin flamboyant aux oreilles ornées de flammèches dorées, toujours en quête d'action et de jeux.",
+    "spriteSheet": "sprites/child_ember.png",
+    "scale": 1.05,
+    "walkSpeed": 60,
+    "evolutions": [
+      {
+        "targetFormId": "adult_ember_solar",
+        "condition": {
+          "minAgeSeconds": 144000,
+          "minPcInputs": 40000,
+          "minCareActions": 35,
+          "maxCareMistakes": 1,
+          "minHappiness": 75,
+          "preferredFoodCategory": "healthy",
+          "priority": 100
+        }
+      },
+      {
+        "targetFormId": "adult_ember_comet",
+        "condition": {
+          "minAgeSeconds": 144000,
+          "minPcInputs": 40000,
+          "minCareActions": 35,
+          "maxCareMistakes": 3,
+          "minGamesPlayed": 8,
+          "priority": 85
+        }
+      },
+      {
+        "targetFormId": "adult_ember_comet",
+        "condition": {
+          "minAgeSeconds": 144000,
+          "minPcInputs": 40000,
+          "minCareActions": 35,
+          "maxCareMistakes": 3,
+          "preferredFoodCategory": "energizing",
+          "priority": 80
+        }
+      },
+      {
+        "targetFormId": "adult_ember_magma",
+        "condition": {
+          "minAgeSeconds": 144000,
+          "minPcInputs": 40000,
+          "minCareActions": 35,
+          "maxCareMistakes": 3,
+          "allowedCategories": ["gourmet", "snack"],
+          "priority": 60
+        }
+      },
+      {
+        "targetFormId": "adult_ember_eclipse",
+        "condition": {
+          "minAgeSeconds": 144000,
+          "minPcInputs": 40000,
+          "minCareActions": 35,
+          "priority": 10
+        }
+      }
+    ]
+  },
+  {
+    "id": "adult_ember_solar",
+    "name": "Solarix",
+    "stage": "adult",
+    "lineage": "ember",
+    "description": "Avatar solaire resplendissant d'une aura dorée bienveillante, élevé avec un soin irréprochable.",
+    "spriteSheet": "sprites/adult_ember_solar.png",
+    "scale": 1.15,
+    "walkSpeed": 65,
+    "evolutions": []
+  },
+  {
+    "id": "adult_ember_comet",
+    "name": "Comète Fulgurante",
+    "stage": "adult",
+    "lineage": "ember",
+    "description": "Bolide stellaire entouré d'une traînée d'étincelles bleutées, propulsé par son goût pour le sport et les défis.",
+    "spriteSheet": "sprites/adult_ember_comet.png",
+    "scale": 1.18,
+    "walkSpeed": 88,
+    "evolutions": []
+  },
+  {
+    "id": "adult_ember_magma",
+    "name": "Magma-Chef",
+    "stage": "adult",
+    "lineage": "ember",
+    "description": "Colosse volcanique jovial au ventre rougeoyant, qui transforme chaque repas gastronomique en fête ardente.",
+    "spriteSheet": "sprites/adult_ember_magma.png",
+    "scale": 1.2,
+    "walkSpeed": 50,
+    "evolutions": []
+  },
+  {
+    "id": "adult_ember_eclipse",
+    "name": "Éclipse Nocturne",
+    "stage": "adult",
+    "lineage": "ember",
+    "description": "Spectre astral drapé de flammes violettes et d'ombres cosmiques, indépendant et insaisissable.",
+    "spriteSheet": "sprites/adult_ember_eclipse.png",
+    "scale": 1.15,
+    "walkSpeed": 60,
     "evolutions": []
   }
 ]

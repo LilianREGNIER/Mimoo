@@ -21,6 +21,7 @@ import type {
 } from '../core/types';
 import { applyAutoStartSetting } from './autoStart';
 import { NotificationManager } from './notifications';
+import { PcActivityTracker } from './pcActivityTracker';
 import {
   loadSaveFromDisk,
   loadStaticGameData,
@@ -45,6 +46,7 @@ if (process.platform === 'win32') {
 
 let mainWindow: BrowserWindow | null = null;
 let trayManager: TrayManager | null = null;
+let pcActivityTracker: PcActivityTracker | null = null;
 let unregisterDisplayListeners: (() => void) | null = null;
 const notificationManager = new NotificationManager();
 
@@ -285,6 +287,7 @@ function attachSmokeTestLifecycle(win: BrowserWindow): void {
 
   const timeoutGuard = setTimeout(() => {
     failSmokeTest('Délai maximal de chargement dépassé (15s).');
+    pcActivityTracker?.stop();
     trayManager?.destroy();
     app.exit(1);
   }, 15000);
@@ -293,6 +296,7 @@ function attachSmokeTestLifecycle(win: BrowserWindow): void {
     setTimeout(() => {
       clearTimeout(timeoutGuard);
       saveToDiskAtomically(currentSaveData);
+      pcActivityTracker?.stop();
       trayManager?.destroy();
 
       if (hasError) {
@@ -356,6 +360,10 @@ if (!gotSingleInstanceLock) {
     clampCurrentPetToDisplay(activeDisplay);
     saveToDiskAtomically(currentSaveData);
 
+    // Suivi léger et anonyme de l'activité PC
+    pcActivityTracker = new PcActivityTracker(() => mainWindow);
+    pcActivityTracker.start();
+
     // 6. Surveillance multi-écrans et DPI
     unregisterDisplayListeners = registerDisplayChangeListeners(
       overlayWin,
@@ -397,6 +405,11 @@ if (!gotSingleInstanceLock) {
       saveToDiskAtomically(currentSaveData);
     }
     trayManager?.destroy();
+  });
+
+  app.on('will-quit', () => {
+    pcActivityTracker?.stop();
+    pcActivityTracker = null;
   });
 
   app.on('window-all-closed', () => {
