@@ -6,10 +6,15 @@
 
 import {
   applyMiniGameResult,
+  buyCosmeticItem,
   cleanPet,
   clickEgg,
+  decodeFriendPassport,
+  encodeFriendPassport,
+  equipCosmeticItem,
   feedPet,
   petCharacter,
+  playTogetherWithFriend,
   scrubCleanPet,
   STARTER_FORM_IDS,
   togglePetSleep,
@@ -24,8 +29,11 @@ import {
 } from './saveSystem';
 import { computeOfflineCatchup } from './timeSystem';
 import type {
+  CosmeticItem,
+  CosmeticSlot,
   FoodItem,
   FormId,
+  FriendPetProfile,
   GameConfig,
   MiniGameResult,
   NeedKey,
@@ -47,7 +55,8 @@ export type SandboxConditionType =
   | 'need_play'
   | 'tired'
   | 'full_restore'
-  | 'boost_marathon';
+  | 'boost_marathon'
+  | 'add_coins';
 
 /** Options de construction de `PetEngine` sous forme d'objet nommé. */
 export interface PetEngineInitOptions {
@@ -55,6 +64,7 @@ export interface PetEngineInitOptions {
   config: GameConfig;
   foods: FoodItem[];
   species: SpeciesFormDefinition[];
+  cosmetics?: CosmeticItem[];
 }
 
 function isInitOptions(
@@ -77,6 +87,7 @@ export class PetEngine {
   private readonly config: GameConfig;
   private readonly foods: FoodItem[];
   private readonly species: SpeciesFormDefinition[];
+  private readonly cosmetics: CosmeticItem[];
   private poopSecondsAccumulator = 0;
 
   constructor(options: PetEngineInitOptions);
@@ -84,19 +95,22 @@ export class PetEngine {
     saveData: SaveDataV1,
     config: GameConfig,
     foods: FoodItem[],
-    species: SpeciesFormDefinition[]
+    species: SpeciesFormDefinition[],
+    cosmetics?: CosmeticItem[]
   );
   constructor(
     saveDataOrOptions: SaveDataV1 | PetEngineInitOptions,
     config?: GameConfig,
     foods?: FoodItem[],
-    species?: SpeciesFormDefinition[]
+    species?: SpeciesFormDefinition[],
+    cosmetics: CosmeticItem[] = []
   ) {
     if (isInitOptions(saveDataOrOptions)) {
       this.saveData = structuredClone(saveDataOrOptions.saveData);
       this.config = saveDataOrOptions.config;
       this.foods = [...saveDataOrOptions.foods];
       this.species = [...saveDataOrOptions.species];
+      this.cosmetics = [...(saveDataOrOptions.cosmetics ?? [])];
     } else {
       if (!config || !foods || !species) {
         throw new Error('PetEngine requires saveData, config, foods, and species.');
@@ -105,6 +119,7 @@ export class PetEngine {
       this.config = config;
       this.foods = [...foods];
       this.species = [...species];
+      this.cosmetics = [...cosmetics];
     }
   }
 
@@ -134,6 +149,11 @@ export class PetEngine {
   /** Retourne le catalogue des formes d'évolution. */
   public getSpecies(): SpeciesFormDefinition[] {
     return [...this.species];
+  }
+
+  /** Retourne le catalogue des objets cosmétiques de la boutique. */
+  public getCosmetics(): CosmeticItem[] {
+    return [...this.cosmetics];
   }
 
   /** Retourne la définition de la forme actuelle du familier. */
@@ -450,9 +470,14 @@ export class PetEngine {
         ? batch.activeSeconds
         : 0;
 
+    const totalBatchInputs = addMouseClicks + addKeyPresses;
+    const coinsEarned =
+      totalBatchInputs > 0 ? Math.max(1, Math.floor(totalBatchInputs / 20)) : 0;
+
     const currentStats = this.saveData.pet.careStats;
     this.saveData.pet = {
       ...this.saveData.pet,
+      tamaCoins: (this.saveData.pet.tamaCoins ?? 0) + coinsEarned,
       lastUpdatedAt:
         typeof nowMs === 'number' && Number.isFinite(nowMs)
           ? nowMs
@@ -478,6 +503,134 @@ export class PetEngine {
       evolved: evoResult.evolved,
       newForm: evoResult.newForm,
     };
+  }
+
+  /**
+   * Achète un objet cosmétique de la boutique et l'équipe automatiquement.
+   */
+  public buyCosmetic(
+    cosmeticOrId: string | CosmeticItem,
+    nowMs?: number
+  ): {
+    pet: PetState;
+    purchased: boolean;
+    reason?: 'already_owned' | 'insufficient_coins' | 'unknown_cosmetic';
+  } {
+    const item =
+      typeof cosmeticOrId === 'string'
+        ? this.cosmetics.find((c) => c.id === cosmeticOrId)
+        : cosmeticOrId;
+
+    if (!item) {
+      return {
+        pet: this.getState(),
+        purchased: false,
+        reason: 'unknown_cosmetic',
+      };
+    }
+
+    const result = buyCosmeticItem(this.saveData.pet, item);
+    if (!result.purchased) {
+      return {
+        pet: this.getState(),
+        purchased: false,
+        reason: result.reason,
+      };
+    }
+
+    this.saveData.pet = result.pet;
+    if (typeof nowMs === 'number' && Number.isFinite(nowMs)) {
+      this.saveData.pet.lastUpdatedAt = nowMs;
+      this.saveData.savedAt = nowMs;
+    }
+
+    return {
+      pet: this.getState(),
+      purchased: true,
+    };
+  }
+
+  /**
+   * Équipe ou déséquipe (`cosmeticId === null`) un objet cosmétique sur le slot indiqué.
+   */
+  public equipCosmetic(
+    slot: CosmeticSlot,
+    cosmeticId: string | null,
+    nowMs?: number
+  ): {
+    pet: PetState;
+    equipped: boolean;
+  } {
+    const result = equipCosmeticItem(this.saveData.pet, slot, cosmeticId);
+    if (result.equipped) {
+      this.saveData.pet = result.pet;
+      if (typeof nowMs === 'number' && Number.isFinite(nowMs)) {
+        this.saveData.pet.lastUpdatedAt = nowMs;
+        this.saveData.savedAt = nowMs;
+      }
+    }
+
+    return {
+      pet: this.getState(),
+      equipped: result.equipped,
+    };
+  }
+
+  /**
+   * Joue avec le familier d'un ami en visite (Salon Temps Réel ou Code Passeport).
+   */
+  public playWithFriend(
+    nowMs?: number
+  ): {
+    pet: PetState;
+    happinessGain: number;
+    coinsEarned: number;
+    evolved: boolean;
+    newForm: SpeciesFormDefinition | null;
+  } {
+    const result = playTogetherWithFriend(this.saveData.pet, nowMs);
+    const evoResult = evaluateEvolution(result.pet, this.species);
+    this.saveData.pet = evoResult.pet;
+    if (typeof nowMs === 'number' && Number.isFinite(nowMs)) {
+      this.saveData.savedAt = nowMs;
+    }
+
+    return {
+      pet: this.getState(),
+      happinessGain: result.happinessGain,
+      coinsEarned: result.coinsEarned,
+      evolved: evoResult.evolved,
+      newForm: evoResult.newForm,
+    };
+  }
+
+  /** Alias de `playWithFriend`. */
+  public playWithFriendPet(nowMs?: number) {
+    return this.playWithFriend(nowMs);
+  }
+
+  /**
+   * Exporte le Code Passeport Tamagotchi (`TAMA-...`) du familier actuel.
+   */
+  public exportPassport(ownerName?: string): string {
+    return encodeFriendPassport(this.saveData.pet, ownerName);
+  }
+
+  /** Alias de `exportPassport`. */
+  public exportPassportCode(ownerName?: string): string {
+    return this.exportPassport(ownerName);
+  }
+
+  /**
+   * Importe et valide un Code Passeport Tamagotchi (`TAMA-...`) d'un ami.
+   */
+  public importPassport(code: string): FriendPetProfile | null {
+    return decodeFriendPassport(code);
+  }
+
+  /** Alias de `importPassport`. */
+  public importPassportCode(code: string): FriendPetProfile | null {
+    return this.importPassport(code);
   }
 
   /**
@@ -688,7 +841,7 @@ export class PetEngine {
           lastUpdatedAt: safeNow,
           needs: {
             ...pet.needs,
-            happiness: 40,
+            happiness: 42,
           },
         };
         break;
@@ -703,6 +856,11 @@ export class PetEngine {
             ...pet.needs,
             happiness: 38,
             energy: Math.max(50, pet.needs.energy),
+          },
+          careStats: {
+            ...pet.careStats,
+            foodCategoryCounts: { ...pet.careStats.foodCategoryCounts },
+            lastPlayedAt: 0,
           },
         };
         break;
@@ -759,6 +917,14 @@ export class PetEngine {
             pcKeyPresses: (stats.pcKeyPresses ?? 0) + 7500,
             pcActiveSeconds: (stats.pcActiveSeconds ?? 0) + 36000,
           },
+        };
+        break;
+      }
+      case 'add_coins': {
+        this.saveData.pet = {
+          ...pet,
+          tamaCoins: (pet.tamaCoins ?? 0) + 1000,
+          lastUpdatedAt: safeNow,
         };
         break;
       }

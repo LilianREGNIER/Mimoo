@@ -58,42 +58,42 @@ Chaque spritesheet `256 × 512` px est organisée selon l'ordre strict suivant d
 
 ### 3.1. Stade 0 — Œuf Commun (`egg`)
 
-| Fichier | Identifiant (`formId`) | Nom | Description visuelle |
-| :--- | :--- | :--- | :--- |
-| `assets/sprites/egg.png` | `egg` | **Œuf Mystique** | Œuf crème aux taches dorées, émeraude et azur dont la coquille se fendille progressivement sur les frames `0..3` de la ligne `idle`. |
+| Fichier | Identifiant (`formId`) | Archétype (`bodyArchetype`) | Nom | Description morphologique |
+| :--- | :--- | :--- | :--- | :--- |
+| `assets/sprites/egg.png` | `egg` | `mystic_egg` | **Œuf Mystique** | Œuf crème aux taches dorées, émeraude et azur dont la coquille se fendille progressivement sur les frames `0..3` de la ligne `idle`. |
 
 ### 3.2. Lignée Aquatique (`aqua`) — 6 Formes
 
-| Fichier | Identifiant (`formId`) | Stade | Nom | Description visuelle |
-| :--- | :--- | :--- | :--- | :--- |
-| `assets/sprites/baby_aqua.png` | `baby_aqua` | Stade 1 (Bébé) | **P'tit Goutte** | Petit blob turquoise rebondissant surmonté d'une gouttelette d'eau cristalline. |
-| `assets/sprites/child_aqua.png` | `child_aqua` | Stade 2 (Enfant) | **Ondine Vive** | Créature bleu azur dotée de petites nageoires-oreilles latérales et d'une crête d'écume. |
-| `assets/sprites/adult_aqua_coral.png` | `adult_aqua_coral` | Stade 3 (Adulte) | **Corallia** | Forme radieuse bleu lagon couronnée de corail rose lumineux, avec collier de perles et nageoires voilées. |
-| `assets/sprites/adult_aqua_leviathan.png` | `adult_aqua_leviathan` | Stade 3 (Adulte) | **Léviathan Azur** | Forme sportive bleu électrique dotée d'une crête hydrodynamique cyan/or et d'ailerons profilés. |
-| `assets/sprites/adult_aqua_pearl.png` | `adult_aqua_pearl` | Stade 3 (Adulte) | **Perle Gourmande** | Forme ronde nacrée pastel coiffée d'une toque-coquillage ornée d'une perle rose et d'un bavoir gourmand. |
-| `assets/sprites/adult_aqua_abyss.png` | `adult_aqua_abyss` | Stade 3 (Adulte) | **Abyssal** | Forme nocturne bleu nuit profond dotée d'une antenne bioluminescente cyan et d'yeux lumineux des grands fonds. |
+| Fichier | Identifiant (`formId`) | Stade | Archétype (`bodyArchetype`) | Nom | Description morphologique (façon Tamagotchi) |
+| :--- | :--- | :--- | :--- | :--- | :--- |
+| `assets/sprites/baby_aqua.png` | `baby_aqua` | Stade 1 (Bébé) | `droplet_slime` | **P'tit Goutte** | Vraie goutte d'eau pointue au sommet et plate/évasée à la base (sans jambes), grands yeux ronds liquides et reflets aquatiques. |
+| `assets/sprites/child_aqua.png` | `child_aqua` | Stade 2 (Enfant) | `axolotl_tadpole` | **Ondine Vive** | Corps amphibien large d'axolotl à 3 branchies externes déployées de chaque côté des joues et grande queue de têtard/sirène ondulante. |
+| `assets/sprites/adult_aqua_coral.png` | `adult_aqua_coral` | Stade 3 (Adulte) | `sea_angel` | **Corallia** | Silhouette haute, fine et élancée d'ange des mers / sirène avec deux grandes nageoires-voiles diaphanes latérales et couronne de corail. |
+| `assets/sprites/adult_aqua_leviathan.png` | `adult_aqua_leviathan` | Stade 3 (Adulte) | `serpent_dragon` | **Léviathan Azur** | Long corps sinueux en **S vertical** (façon *Nyorotchi*), tête de dragon marin en haut, ventre strié et crête dorsale cyan/or. |
+| `assets/sprites/adult_aqua_pearl.png` | `adult_aqua_pearl` | Stade 3 (Adulte) | `octopus` | **Perle Gourmande** | Tête en dôme nacré (façon *Takotchi*) avec **6 tentacules recourbés et animés** en bas, bouche en ventouse et grosse perle brillante sur le front. |
+| `assets/sprites/adult_aqua_abyss.png` | `adult_aqua_abyss` | Stade 3 (Adulte) | `anglerfish` | **Abyssal** | Silhouette large et trapue de baudroie des abysses avec grande bouche à petites dents blanches et longue antenne-lanterne bioluminescente pendante. |
 
 ### 3.3. Lignée Sylvestre (`flora`) — 6 Formes
 
-| Fichier | Identifiant (`formId`) | Stade | Nom | Description visuelle |
-| :--- | :--- | :--- | :--- | :--- |
-| `assets/sprites/baby_flora.png` | `baby_flora` | Stade 1 (Bébé) | **P'tit Bourgeon** | Petite graine vert tendre surmontée d'une jeune pousse printanière. |
-| `assets/sprites/child_flora.png` | `child_flora` | Stade 2 (Enfant) | **Feuillu Curieux** | Créature vert émeraude vive avec deux feuilles oscillantes sur la tête et de petites pattes moussues. |
-| `assets/sprites/adult_flora_bloom.png` | `adult_flora_bloom` | Stade 3 (Adulte) | **Floramajesté** | Forme radieuse vert doré portant une grande fleur solaire épanouie aux pétales roses et cœur d'or. |
-| `assets/sprites/adult_flora_raptor.png` | `adult_flora_raptor` | Stade 3 (Adulte) | **Vélociflore** | Forme athlétique vert jungle et orange vif, parée de plumes-feuilles aérodynamiques et d'une queue agile. |
-| `assets/sprites/adult_flora_truffle.png` | `adult_flora_truffle` | Stade 3 (Adulte) | **Truffignon** | Forme ronde couleur noisette et mousse coiffée d'un grand chapeau de champignon rouge à pois crème façon toque. |
-| `assets/sprites/adult_flora_thorn.png` | `adult_flora_thorn` | Stade 3 (Adulte) | **Ronce-Noire** | Forme sylvestre sombre en écorce ancienne, ornée de cornes de ronces violettes et d'yeux ambrés lumineux. |
+| Fichier | Identifiant (`formId`) | Stade | Archétype (`bodyArchetype`) | Nom | Description morphologique (façon Tamagotchi) |
+| :--- | :--- | :--- | :--- | :--- | :--- |
+| `assets/sprites/baby_flora.png` | `baby_flora` | Stade 1 (Bébé) | `bulb_quadruped` | **P'tit Bourgeon** | Corps en forme de petit navet/bulbe trapu marchant sur **4 petites pattes-racines**, grands yeux curieux et double feuille latérale. |
+| `assets/sprites/child_flora.png` | `child_flora` | Stade 2 (Enfant) | `biped_dino` | **Feuillu Curieux** | Petit dinosaure bipède debout, museau dessiné, ventre clair strié, queue dressée et grande feuille-parasol au-dessus de la tête. |
+| `assets/sprites/adult_flora_bloom.png` | `adult_flora_bloom` | Stade 3 (Adulte) | `mametchi_ears` | **Floramajesté** | Personnage bipède bien proportionné (façon *Mametchi* / *Mimitchi*) avec deux grandes oreilles dressées, bras et jambes distincts, torse bicolore et grande fleur épanouie. |
+| `assets/sprites/adult_flora_raptor.png` | `adult_flora_raptor` | Stade 3 (Adulte) | `raptor_bird` | **Vélociflore** | Oiseau-raptor coureur à longues pattes musclées, bec crochu jaune, crête de plumes orange et ailes-feuilles. |
+| `assets/sprites/adult_flora_truffle.png` | `adult_flora_truffle` | Stade 3 (Adulte) | `kuchipatchi_mushroom` | **Truffignon** | Silhouette très dodue en poire (façon *Kuchipatchi*) avec gros bec/lèvres épaisses et immense chapeau de champignon rouge tacheté dépassant largement de la tête. |
+| `assets/sprites/adult_flora_thorn.png` | `adult_flora_thorn` | Stade 3 (Adulte) | `carnivorous_vine` | **Ronce-Noire** | Tige serpentine épineuse sortant d'un pot/racines en bas (façon *Kusatchi*), grande tête à collerette dentelée verte/pourpre et cornes de ronces. |
 
 ### 3.4. Lignée Astrale / Flamme (`ember`) — 6 Formes
 
-| Fichier | Identifiant (`formId`) | Stade | Nom | Description visuelle |
-| :--- | :--- | :--- | :--- | :--- |
-| `assets/sprites/baby_ember.png` | `baby_ember` | Stade 1 (Bébé) | **P'tite Braise** | Petite braise orangée/rougeoyante chaleureuse avec une flammèche dansante au sommet. |
-| `assets/sprites/child_ember.png` | `child_ember` | Stade 2 (Enfant) | **Pyrolynx** | Jeune félin de feu ardent aux oreilles de flamme dressées et à la queue étincelante. |
-| `assets/sprites/adult_ember_solar.png` | `adult_ember_solar` | Stade 3 (Adulte) | **Solarix** | Forme solaire d'or radieux dotée d'une couronne flamboyante et d'ailes de lumière céleste. |
-| `assets/sprites/adult_ember_comet.png` | `adult_ember_comet` | Stade 3 (Adulte) | **Comète Fulgurante** | Forme cosmique bleu cobalt et feu doré, entourée d'une traînée d'étoiles filantes. |
-| `assets/sprites/adult_ember_magma.png` | `adult_ember_magma` | Stade 3 (Adulte) | **Magma-Chef** | Forme ronde rouge volcanique chaleureuse portant une toque de chef pâtissier et un tablier flambé. |
-| `assets/sprites/adult_ember_eclipse.png` | `adult_ember_eclipse` | Stade 3 (Adulte) | **Éclipse Nocturne** | Forme astrale violet cosmique sombre surmontée d'un halo d'éclipse doré, de cornes astrales et de flammes spectrales. |
+| Fichier | Identifiant (`formId`) | Stade | Archétype (`bodyArchetype`) | Nom | Description morphologique (façon Tamagotchi) |
+| :--- | :--- | :--- | :--- | :--- | :--- |
+| `assets/sprites/baby_ember.png` | `baby_ember` | Stade 1 (Bébé) | `star_spirit` | **P'tite Braise** | Silhouette en **étoile à 5 branches / flammèche flottante** (sans pieds, lévite au-dessus du sol) avec des yeux obliques ardents. |
+| `assets/sprites/child_ember.png` | `child_ember` | Stade 2 (Enfant) | `winged_comet` | **Pyrolynx** | Corps de lynx/comète ailée avec **deux ailes de feu latérales bien visibles**, grandes oreilles pointues et queue de braise. |
+| `assets/sprites/adult_ember_solar.png` | `adult_ember_solar` | Stade 3 (Adulte) | `phoenix` | **Solarix** | Silhouette majestueuse de **Phénix aux grandes ailes dorées déployées** sur toute la largeur (`60 px`), serres d'oiseau, bec doré et couronne solaire. |
+| `assets/sprites/adult_ember_comet.png` | `adult_ember_comet` | Stade 3 (Adulte) | `mecha_star` | **Comète Fulgurante** | Silhouette angulaire et robotique (façon *Robot* / *Masktchi*) avec **casque à visière néon cyan**, épaulières dorées et propulseurs latéraux. |
+| `assets/sprites/adult_ember_magma.png` | `adult_ember_magma` | Stade 3 (Adulte) | `lava_golem` | **Magma-Chef** | Silhouette **trapézoïdale massive de Golem de roche et lave**, gros bras musclés sur les côtés, fissures incandescentes sur le torse et cratère volcanique fumant sur la tête. |
+| `assets/sprites/adult_ember_eclipse.png` | `adult_ember_eclipse` | Stade 3 (Adulte) | `phantom_bat` | **Éclipse Nocturne** | Fantôme/chauve-souris cosmique (façon *Devilgotchi*) à **cape déchiquetée flottante** (sans jambes), grandes ailes de chauve-souris, cornes en croissant de lune et halo d'éclipse. |
 
 ### 3.5. Manifeste et Icônes (`assets/sprites/` & `assets/icons/`)
 

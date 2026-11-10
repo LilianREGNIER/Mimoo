@@ -11,6 +11,7 @@ import { validateAndMigrateSaveData } from '../core/saveSystem';
 import { computeOfflineCatchup } from '../core/timeSystem';
 import type {
   BootstrapPayload,
+  CosmeticItem,
   DisplayBoundsInfo,
   FoodItem,
   GameConfig,
@@ -23,6 +24,7 @@ import { applyAutoStartSetting } from './autoStart';
 import { NotificationManager } from './notifications';
 import { PcActivityTracker } from './pcActivityTracker';
 import {
+  loadCosmeticsCatalog,
   loadSaveFromDisk,
   loadStaticGameData,
   resetSaveOnDisk,
@@ -54,6 +56,7 @@ let currentSaveData!: SaveDataV1;
 let gameConfig!: GameConfig;
 let foodsCatalog: FoodItem[] = [];
 let speciesCatalog: SpeciesFormDefinition[] = [];
+let cosmeticsCatalog: CosmeticItem[] = [];
 let initialOfflineReport!: OfflineCatchupReport;
 
 /**
@@ -123,6 +126,7 @@ function registerIpcHandlers(): void {
       gameConfig,
       foods: foodsCatalog,
       species: speciesCatalog,
+      cosmetics: cosmeticsCatalog,
       offlineReport: initialOfflineReport,
       displays: getDisplaysInfo(),
     };
@@ -331,6 +335,7 @@ if (!gotSingleInstanceLock) {
     gameConfig = staticData.gameConfig;
     foodsCatalog = staticData.foods;
     speciesCatalog = staticData.species;
+    cosmeticsCatalog = loadCosmeticsCatalog();
 
     const loadedSave = loadSaveFromDisk(nowMs);
 

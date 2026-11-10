@@ -94,11 +94,17 @@ export class TrayManager {
     const energy = Math.round(pet.needs.energy);
     const happiness = Math.round(pet.needs.happiness);
     const cleanliness = Math.round(pet.needs.cleanliness);
+    const tamaCoins = Math.round(pet.tamaCoins ?? 0);
 
-    const tooltip = `${pet.name} (${stageLabel}) — Faim: ${hunger}% | Énergie: ${energy}% | Bonheur: ${happiness}% | Propreté: ${cleanliness}%`;
+    const tooltip = `${pet.name} (${stageLabel}) — 🪙 ${tamaCoins} | Faim: ${hunger}% | Énergie: ${energy}% | Bonheur: ${happiness}% | Propreté: ${cleanliness}%`;
     this.tray.setToolTip(tooltip);
 
     const contextMenu = Menu.buildFromTemplate([
+      {
+        label: `${pet.name} (${stageLabel}) — 🪙 ${pet.tamaCoins}`,
+        enabled: false,
+      },
+      { type: 'separator' },
       {
         label: 'Nourrir',
         click: () => this.sendTrayAction('feed'),
@@ -114,6 +120,15 @@ export class TrayManager {
       {
         label: 'Nettoyer',
         click: () => this.sendTrayAction('clean'),
+      },
+      { type: 'separator' },
+      {
+        label: '🛍️ Boutique & Cosmétiques',
+        click: () => this.sendTrayAction('open-shop'),
+      },
+      {
+        label: '🌐 Mode Online (Recevoir un ami)',
+        click: () => this.sendTrayAction('open-online'),
       },
       {
         label: 'Statistiques & Réglages',

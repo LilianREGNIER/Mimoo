@@ -73,6 +73,44 @@ export interface NeedsState {
 /** Catégories nutritionnelles influençant les branches d'évolution. */
 export type FoodCategory = 'healthy' | 'snack' | 'energizing' | 'gourmet';
 
+/** Emplacements d'équipement cosmétique disponibles sur le familier. */
+export type CosmeticSlot = 'hat' | 'accessory' | 'aura';
+
+/** Identifiant unique d'un objet cosmétique. */
+export type CosmeticId = string;
+
+/** Définition d'un objet cosmétique issu de `data/cosmetics.json`. */
+export interface CosmeticItem {
+  id: string;
+  name: string;
+  slot: CosmeticSlot;
+  icon: string;
+  description: string;
+  price: number;
+}
+
+/** Cosmétiques actuellement équipés sur les 3 emplacements du familier. */
+export interface EquippedCosmetics {
+  hat: string | null;
+  accessory: string | null;
+  aura: string | null;
+}
+
+/** Profil d'un familier ami reçu en visite Online (Salon Temps Réel) ou par Code Passeport. */
+export interface FriendPetProfile {
+  id: string;
+  name: string;
+  ownerName: string;
+  formId: FormId;
+  stage: StageId;
+  lineage: LineageId;
+  equippedCosmetics: EquippedCosmetics;
+  happiness: number;
+  x?: number;
+  direction?: 1 | -1;
+  animationState?: AnimationState;
+}
+
 /** Définition d'un aliment issu de `data/foods.json`. */
 export interface FoodItem {
   /** Identifiant unique de l'aliment (ex: 'apple_fresh'). */
@@ -274,6 +312,12 @@ export interface PetState {
   position: { x: number; y: number };
   /** Statistiques cumulées d'élevage et de soin. */
   careStats: CareStats;
+  /** Monnaie TamaCoins gagnée en prenant soin du familier et en jouant aux mini-jeux. */
+  tamaCoins: number;
+  /** Liste des identifiants d'objets cosmétiques débloqués/achetés. */
+  ownedCosmetics: string[];
+  /** Objets cosmétiques actuellement équipés sur le familier. */
+  equippedCosmetics: EquippedCosmetics;
 }
 
 /** Format de sauvegarde locale versionné (Schéma v1). */
@@ -323,6 +367,8 @@ export type TrayActionType =
   | 'play'
   | 'toggle-sleep'
   | 'clean'
+  | 'open-shop'
+  | 'open-online'
   | 'open-compendium'
   | 'open-sandbox'
   | 'center-pet'
@@ -345,6 +391,8 @@ export interface BootstrapPayload {
   foods: FoodItem[];
   /** Catalogue des formes et règles d'évolution. */
   species: SpeciesFormDefinition[];
+  /** Catalogue des objets cosmétiques de la boutique. */
+  cosmetics: CosmeticItem[];
   /** Rapport du rattrapage hors-ligne calculé à l'ouverture. */
   offlineReport: OfflineCatchupReport;
   /** Liste des écrans détectés. */

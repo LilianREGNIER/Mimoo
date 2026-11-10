@@ -181,6 +181,10 @@ export function applyTickNeeds(
   }
 
   // Mise à jour automatique de needsCuddle et needsPlay
+  const recentlyPetted =
+    pet.lastPettedAt > 0 &&
+    pet.lastUpdatedAt + deltaSeconds * 1000 - pet.lastPettedAt < 180_000;
+
   const longSinceLastPetOnline =
     !isOffline &&
     pet.lastPettedAt > 0 &&
@@ -188,11 +192,19 @@ export function applyTickNeeds(
 
   const nextNeedsCuddle = pet.isSleeping
     ? false
-    : Boolean(pet.needsCuddle) || nextNeeds.happiness < 55 || longSinceLastPetOnline;
+    : recentlyPetted
+      ? Boolean(pet.needsCuddle)
+      : Boolean(pet.needsCuddle) || nextNeeds.happiness < 55 || longSinceLastPetOnline;
+
+  const recentlyPlayed =
+    pet.careStats.lastPlayedAt > 0 &&
+    pet.lastUpdatedAt + deltaSeconds * 1000 - pet.careStats.lastPlayedAt < 180_000;
 
   const nextNeedsPlay = pet.isSleeping
     ? false
-    : (Boolean(pet.needsPlay) || nextNeeds.happiness < 48) && nextNeeds.energy > 30;
+    : recentlyPlayed
+      ? Boolean(pet.needsPlay)
+      : (Boolean(pet.needsPlay) || nextNeeds.happiness < 48) && nextNeeds.energy > 30;
 
   const updatedPet: PetState = {
     ...pet,
@@ -207,6 +219,10 @@ export function applyTickNeeds(
       foodCategoryCounts: { ...pet.careStats.foodCategoryCounts },
       careMistakes,
       neglectSecondsAccumulator,
+    },
+    ownedCosmetics: [...(pet.ownedCosmetics ?? [])],
+    equippedCosmetics: {
+      ...(pet.equippedCosmetics ?? { hat: null, accessory: null, aura: null }),
     },
   };
 

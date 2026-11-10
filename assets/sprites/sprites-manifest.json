@@ -1,5 +1,5 @@
 {
-  "version": 2,
+  "version": 3,
   "sheetWidth": 256,
   "sheetHeight": 512,
   "frameWidth": 64,
@@ -22,6 +22,7 @@
       "stage": "egg",
       "stageIndex": 0,
       "lineage": null,
+      "bodyArchetype": "mystic_egg",
       "name": "Œuf Mystique",
       "file": "egg.png",
       "path": "assets/sprites/egg.png"
@@ -31,6 +32,7 @@
       "stage": "baby",
       "stageIndex": 1,
       "lineage": "aqua",
+      "bodyArchetype": "droplet_slime",
       "name": "P'tit Goutte",
       "file": "baby_aqua.png",
       "path": "assets/sprites/baby_aqua.png"
@@ -40,6 +42,7 @@
       "stage": "child",
       "stageIndex": 2,
       "lineage": "aqua",
+      "bodyArchetype": "axolotl_tadpole",
       "name": "Ondine Vive",
       "file": "child_aqua.png",
       "path": "assets/sprites/child_aqua.png"
@@ -49,6 +52,7 @@
       "stage": "adult",
       "stageIndex": 3,
       "lineage": "aqua",
+      "bodyArchetype": "sea_angel",
       "name": "Corallia",
       "file": "adult_aqua_coral.png",
       "path": "assets/sprites/adult_aqua_coral.png"
@@ -58,6 +62,7 @@
       "stage": "adult",
       "stageIndex": 3,
       "lineage": "aqua",
+      "bodyArchetype": "serpent_dragon",
       "name": "Léviathan Azur",
       "file": "adult_aqua_leviathan.png",
       "path": "assets/sprites/adult_aqua_leviathan.png"
@@ -67,6 +72,7 @@
       "stage": "adult",
       "stageIndex": 3,
       "lineage": "aqua",
+      "bodyArchetype": "octopus",
       "name": "Perle Gourmande",
       "file": "adult_aqua_pearl.png",
       "path": "assets/sprites/adult_aqua_pearl.png"
@@ -76,6 +82,7 @@
       "stage": "adult",
       "stageIndex": 3,
       "lineage": "aqua",
+      "bodyArchetype": "anglerfish",
       "name": "Abyssal",
       "file": "adult_aqua_abyss.png",
       "path": "assets/sprites/adult_aqua_abyss.png"
@@ -85,6 +92,7 @@
       "stage": "baby",
       "stageIndex": 1,
       "lineage": "flora",
+      "bodyArchetype": "bulb_quadruped",
       "name": "P'tit Bourgeon",
       "file": "baby_flora.png",
       "path": "assets/sprites/baby_flora.png"
@@ -94,6 +102,7 @@
       "stage": "child",
       "stageIndex": 2,
       "lineage": "flora",
+      "bodyArchetype": "biped_dino",
       "name": "Feuillu Curieux",
       "file": "child_flora.png",
       "path": "assets/sprites/child_flora.png"
@@ -103,6 +112,7 @@
       "stage": "adult",
       "stageIndex": 3,
       "lineage": "flora",
+      "bodyArchetype": "mametchi_ears",
       "name": "Floramajesté",
       "file": "adult_flora_bloom.png",
       "path": "assets/sprites/adult_flora_bloom.png"
@@ -112,6 +122,7 @@
       "stage": "adult",
       "stageIndex": 3,
       "lineage": "flora",
+      "bodyArchetype": "raptor_bird",
       "name": "Vélociflore",
       "file": "adult_flora_raptor.png",
       "path": "assets/sprites/adult_flora_raptor.png"
@@ -121,6 +132,7 @@
       "stage": "adult",
       "stageIndex": 3,
       "lineage": "flora",
+      "bodyArchetype": "kuchipatchi_mushroom",
       "name": "Truffignon",
       "file": "adult_flora_truffle.png",
       "path": "assets/sprites/adult_flora_truffle.png"
@@ -130,6 +142,7 @@
       "stage": "adult",
       "stageIndex": 3,
       "lineage": "flora",
+      "bodyArchetype": "carnivorous_vine",
       "name": "Ronce-Noire",
       "file": "adult_flora_thorn.png",
       "path": "assets/sprites/adult_flora_thorn.png"
@@ -139,6 +152,7 @@
       "stage": "baby",
       "stageIndex": 1,
       "lineage": "ember",
+      "bodyArchetype": "star_spirit",
       "name": "P'tite Braise",
       "file": "baby_ember.png",
       "path": "assets/sprites/baby_ember.png"
@@ -148,6 +162,7 @@
       "stage": "child",
       "stageIndex": 2,
       "lineage": "ember",
+      "bodyArchetype": "winged_comet",
       "name": "Pyrolynx",
       "file": "child_ember.png",
       "path": "assets/sprites/child_ember.png"
@@ -157,6 +172,7 @@
       "stage": "adult",
       "stageIndex": 3,
       "lineage": "ember",
+      "bodyArchetype": "phoenix",
       "name": "Solarix",
       "file": "adult_ember_solar.png",
       "path": "assets/sprites/adult_ember_solar.png"
@@ -166,6 +182,7 @@
       "stage": "adult",
       "stageIndex": 3,
       "lineage": "ember",
+      "bodyArchetype": "mecha_star",
       "name": "Comète Fulgurante",
       "file": "adult_ember_comet.png",
       "path": "assets/sprites/adult_ember_comet.png"
@@ -175,6 +192,7 @@
       "stage": "adult",
       "stageIndex": 3,
       "lineage": "ember",
+      "bodyArchetype": "lava_golem",
       "name": "Magma-Chef",
       "file": "adult_ember_magma.png",
       "path": "assets/sprites/adult_ember_magma.png"
@@ -184,6 +202,7 @@
       "stage": "adult",
       "stageIndex": 3,
       "lineage": "ember",
+      "bodyArchetype": "phantom_bat",
       "name": "Éclipse Nocturne",
       "file": "adult_ember_eclipse.png",
       "path": "assets/sprites/adult_ember_eclipse.png"

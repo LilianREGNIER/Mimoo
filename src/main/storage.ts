@@ -1,6 +1,6 @@
 /**
  * Persistance locale atomique de la sauvegarde (`save.json` + `save.backup.json`)
- * et chargement des catalogues de données statiques (`game-config.json`, `foods.json`, `species.json`).
+ * et chargement des catalogues de données statiques (`game-config.json`, `foods.json`, `species.json`, `cosmetics.json`).
  */
 
 import { app } from 'electron';
@@ -13,6 +13,7 @@ import {
   validateAndMigrateSaveData,
 } from '../core/saveSystem';
 import type {
+  CosmeticItem,
   FoodItem,
   GameConfig,
   SaveDataV1,
@@ -193,12 +194,26 @@ export function resolveDataDirectory(): string {
 }
 
 /**
- * Charge et parse les fichiers JSON statiques (`game-config.json`, `foods.json`, `species.json`).
+ * Charge le catalogue des objets cosmétiques depuis `data/cosmetics.json`.
+ */
+export function loadCosmeticsCatalog(): CosmeticItem[] {
+  const dataDir = resolveDataDirectory();
+  const cosmeticsPath = path.join(dataDir, 'cosmetics.json');
+  if (!fs.existsSync(cosmeticsPath)) {
+    return [];
+  }
+  const cosmeticsRaw = fs.readFileSync(cosmeticsPath, 'utf-8');
+  return JSON.parse(cosmeticsRaw) as CosmeticItem[];
+}
+
+/**
+ * Charge et parse les fichiers JSON statiques (`game-config.json`, `foods.json`, `species.json`, `cosmetics.json`).
  */
 export function loadStaticGameData(): {
   gameConfig: GameConfig;
   foods: FoodItem[];
   species: SpeciesFormDefinition[];
+  cosmetics: CosmeticItem[];
 } {
   const dataDir = resolveDataDirectory();
 
@@ -209,10 +224,12 @@ export function loadStaticGameData(): {
   const gameConfig = JSON.parse(gameConfigRaw) as GameConfig;
   const foods = JSON.parse(foodsRaw) as FoodItem[];
   const species = JSON.parse(speciesRaw) as SpeciesFormDefinition[];
+  const cosmetics = loadCosmeticsCatalog();
 
   return {
     gameConfig,
     foods,
     species,
+    cosmetics,
   };
 }

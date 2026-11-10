@@ -1,0 +1,114 @@
+[
+  {
+    "id": "hat_crown",
+    "name": "Couronne Royale",
+    "slot": "hat",
+    "icon": "👑",
+    "description": "Une couronne d'or étincelante sertie de rubis pour le souverain incontesté de votre bureau.",
+    "price": 120
+  },
+  {
+    "id": "hat_tophat",
+    "name": "Haut-de-forme Chic",
+    "slot": "hat",
+    "icon": "🎩",
+    "description": "Un chapeau de gentleman d'une élégance intemporelle, rehaussé d'un ruban de satin.",
+    "price": 90
+  },
+  {
+    "id": "hat_bow",
+    "name": "Ruban Kawaii",
+    "slot": "hat",
+    "icon": "🎀",
+    "description": "Un grand nœud rose pastel ultra-mignon qui rebondit joyeusement à chaque pas.",
+    "price": 60
+  },
+  {
+    "id": "hat_wizard",
+    "name": "Chapeau d'Archimage",
+    "slot": "hat",
+    "icon": "🧙",
+    "description": "Un chapeau pointu indigo brodé de constellations dorées chargées de magie astrale.",
+    "price": 150
+  },
+  {
+    "id": "hat_cap",
+    "name": "Casquette Rétro",
+    "slot": "hat",
+    "icon": "🧢",
+    "description": "Une casquette streetwear des années 90 portée avec un style décontracté.",
+    "price": 75
+  },
+  {
+    "id": "hat_halo",
+    "name": "Auréole Céleste",
+    "slot": "hat",
+    "icon": "😇",
+    "description": "Un anneau de lumière pure flottant doucement au-dessus de la tête de votre compagnon.",
+    "price": 180
+  },
+  {
+    "id": "acc_sunglasses",
+    "name": "Lunettes Pixel Cool",
+    "slot": "accessory",
+    "icon": "🕶️",
+    "description": "Les légendaires lunettes noires pixelisées 'Deal With It' pour un charisme maximal.",
+    "price": 80
+  },
+  {
+    "id": "acc_monocle",
+    "name": "Monocle d'Or",
+    "slot": "accessory",
+    "icon": "🧐",
+    "description": "Un monocle raffiné avec chaînette dorée pour inspecter vos lignes de code avec distinction.",
+    "price": 95
+  },
+  {
+    "id": "acc_star_glasses",
+    "name": "Lunettes Étoilées",
+    "slot": "accessory",
+    "icon": "🤩",
+    "description": "Des montures en forme d'étoiles brillantes dignes d'une véritable superstar de la pop.",
+    "price": 110
+  },
+  {
+    "id": "acc_blush_hearts",
+    "name": "Joues Cœurs",
+    "slot": "accessory",
+    "icon": "💖",
+    "description": "D'adorables petits cœurs roses dessinés sur les joues qui témoignent d'une affection infinie.",
+    "price": 65
+  },
+  {
+    "id": "aura_rainbow",
+    "name": "Étoiles Arc-en-Ciel",
+    "slot": "aura",
+    "icon": "🌈",
+    "description": "Un tourbillon féerique d'étoiles prismatiques qui gravitent autour de votre familier.",
+    "price": 200
+  },
+  {
+    "id": "aura_music",
+    "name": "Symphonie Flottante",
+    "slot": "aura",
+    "icon": "🎵",
+    "description": "Des notes de musique colorées qui s'élèvent en cadence tout autour de votre compagnon.",
+    "price": 140
+  },
+  {
+    "id": "aura_sakura",
+    "name": "Pétales de Cerisier",
+    "slot": "aura",
+    "icon": "🌸",
+    "description": "Une brise printanière faisant danser de délicats pétales de sakura roses.",
+    "price": 160
+  },
+  {
+    "id": "aura_cyber",
+    "name": "Anneau Cyber-Néon",
+    "slot": "aura",
+    "icon": "💠",
+    "description": "Un hologramme géométrique cyan et magenta pulsant d'une énergie futuriste.",
+    "price": 220
+  }
+]

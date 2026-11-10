@@ -5,9 +5,12 @@
  */
 
 import { clampNeed } from './needsSystem';
-import { FORM_TO_LINEAGE } from './saveSystem';
+import { FORM_TO_LINEAGE, FORM_TO_STAGE, isValidFormId } from './saveSystem';
 import type {
+  CosmeticItem,
+  CosmeticSlot,
   FoodItem,
+  FriendPetProfile,
   GameConfig,
   MiniGameResult,
   NeedsState,
@@ -182,6 +185,11 @@ export function feedPet(
     needs: nextNeeds,
     discoveredForms: [...pet.discoveredForms],
     position: { ...pet.position },
+    tamaCoins: (pet.tamaCoins ?? 0) + 5,
+    ownedCosmetics: [...(pet.ownedCosmetics ?? [])],
+    equippedCosmetics: {
+      ...(pet.equippedCosmetics ?? { hat: null, accessory: null, aura: null }),
+    },
     careStats: {
       ...pet.careStats,
       totalMeals: pet.careStats.totalMeals + 1,
@@ -200,7 +208,7 @@ export function feedPet(
 
 /**
  * Caresse le familier. Octroie un bonus de bonheur si le familier ne dort pas
- * et que le délai de recharge (`config.petCooldownMs`) est écoulé.
+ * et que le délai de recharge (`config.petCooldownMs`) est écoulé ou que `pet.needsCuddle === true`.
  * Apaise systématiquement `needsCuddle = false` lorsque le familier est éveillé.
  */
 export function petCharacter(
@@ -212,7 +220,7 @@ export function petCharacter(
   const cooldownMs = Math.max(0, config.petCooldownMs);
   const elapsed = safeNow - pet.lastPettedAt;
 
-  if (pet.isSleeping) {
+  if (pet.isSleeping && !pet.needsCuddle) {
     const remaining =
       pet.lastPettedAt > 0 ? Math.max(0, cooldownMs - Math.max(0, elapsed)) : 0;
     return {
@@ -222,7 +230,8 @@ export function petCharacter(
     };
   }
 
-  const isCooldownElapsed = pet.lastPettedAt <= 0 || elapsed >= cooldownMs;
+  const isCooldownElapsed =
+    Boolean(pet.needsCuddle) || pet.lastPettedAt <= 0 || elapsed >= cooldownMs;
   if (!isCooldownElapsed) {
     const appeasedPet: PetState = {
       ...pet,
@@ -230,6 +239,10 @@ export function petCharacter(
       needs: { ...pet.needs },
       discoveredForms: [...pet.discoveredForms],
       position: { ...pet.position },
+      ownedCosmetics: [...(pet.ownedCosmetics ?? [])],
+      equippedCosmetics: {
+        ...(pet.equippedCosmetics ?? { hat: null, accessory: null, aura: null }),
+      },
       careStats: {
         ...pet.careStats,
         foodCategoryCounts: { ...pet.careStats.foodCategoryCounts },
@@ -242,17 +255,28 @@ export function petCharacter(
     };
   }
 
+  const happinessBonus = Math.max(
+    config.petHappinessBonus,
+    pet.needsCuddle ? 18 : 8
+  );
+
   const updatedPet: PetState = {
     ...pet,
+    isSleeping: false,
     lastUpdatedAt: safeNow,
     lastPettedAt: safeNow,
     needsCuddle: false,
     needs: {
       ...pet.needs,
-      happiness: clampNeed(pet.needs.happiness + config.petHappinessBonus),
+      happiness: clampNeed(pet.needs.happiness + happinessBonus),
     },
     discoveredForms: [...pet.discoveredForms],
     position: { ...pet.position },
+    tamaCoins: (pet.tamaCoins ?? 0) + 4,
+    ownedCosmetics: [...(pet.ownedCosmetics ?? [])],
+    equippedCosmetics: {
+      ...(pet.equippedCosmetics ?? { hat: null, accessory: null, aura: null }),
+    },
     careStats: {
       ...pet.careStats,
       foodCategoryCounts: { ...pet.careStats.foodCategoryCounts },
@@ -330,6 +354,11 @@ export function cleanPet(
     },
     discoveredForms: [...pet.discoveredForms],
     position: { ...pet.position },
+    tamaCoins: (pet.tamaCoins ?? 0) + 10,
+    ownedCosmetics: [...(pet.ownedCosmetics ?? [])],
+    equippedCosmetics: {
+      ...(pet.equippedCosmetics ?? { hat: null, accessory: null, aura: null }),
+    },
     careStats: {
       ...pet.careStats,
       foodCategoryCounts: { ...pet.careStats.foodCategoryCounts },
@@ -383,6 +412,11 @@ export function scrubCleanPet(
       },
       discoveredForms: [...pet.discoveredForms],
       position: { ...pet.position },
+      tamaCoins: (pet.tamaCoins ?? 0) + 10,
+      ownedCosmetics: [...(pet.ownedCosmetics ?? [])],
+      equippedCosmetics: {
+        ...(pet.equippedCosmetics ?? { hat: null, accessory: null, aura: null }),
+      },
       careStats: {
         ...pet.careStats,
         foodCategoryCounts: { ...pet.careStats.foodCategoryCounts },
@@ -412,6 +446,10 @@ export function scrubCleanPet(
     },
     discoveredForms: [...pet.discoveredForms],
     position: { ...pet.position },
+    ownedCosmetics: [...(pet.ownedCosmetics ?? [])],
+    equippedCosmetics: {
+      ...(pet.equippedCosmetics ?? { hat: null, accessory: null, aura: null }),
+    },
     careStats: {
       ...pet.careStats,
       foodCategoryCounts: { ...pet.careStats.foodCategoryCounts },
@@ -431,6 +469,7 @@ export function scrubCleanPet(
  * - Coût d'énergie (`6` points) et de faim (`4` points sans descendre sous `10`).
  * - Remet `needsPlay = false` et met à jour `careStats.lastPlayedAt = safeNow`.
  * - Incrémente `totalGamesPlayed` et éventuellement `totalGamesWon`.
+ * - Ajoute `+20` `tamaCoins` en cas de victoire ou `+8` `tamaCoins` en cas de participation.
  */
 export function applyMiniGameResult(
   pet: PetState,
@@ -446,6 +485,7 @@ export function applyMiniGameResult(
   const happinessGain = result.won ? Math.round(10 + ratio * 12) : 5;
   const energyCost = 6;
   const hungerCost = 4;
+  const coinsReward = result.won ? 20 : 8;
 
   const currentHunger = clampNeed(pet.needs.hunger);
   const nextHunger =
@@ -463,6 +503,11 @@ export function applyMiniGameResult(
     },
     discoveredForms: [...pet.discoveredForms],
     position: { ...pet.position },
+    tamaCoins: (pet.tamaCoins ?? 0) + coinsReward,
+    ownedCosmetics: [...(pet.ownedCosmetics ?? [])],
+    equippedCosmetics: {
+      ...(pet.equippedCosmetics ?? { hat: null, accessory: null, aura: null }),
+    },
     careStats: {
       ...pet.careStats,
       foodCategoryCounts: { ...pet.careStats.foodCategoryCounts },
@@ -478,3 +523,260 @@ export function applyMiniGameResult(
     energyCost,
   };
 }
+
+/**
+ * Achète un objet cosmétique dans la boutique avec des `tamaCoins` et l'équipe automatiquement.
+ */
+export function buyCosmeticItem(
+  pet: PetState,
+  item: CosmeticItem
+): {
+  pet: PetState;
+  purchased: boolean;
+  reason?: 'already_owned' | 'insufficient_coins';
+} {
+  const owned = Array.isArray(pet.ownedCosmetics) ? pet.ownedCosmetics : [];
+  if (owned.includes(item.id)) {
+    return { pet, purchased: false, reason: 'already_owned' };
+  }
+
+  const currentCoins = Number.isFinite(pet.tamaCoins) ? pet.tamaCoins : 0;
+  if (currentCoins < item.price) {
+    return { pet, purchased: false, reason: 'insufficient_coins' };
+  }
+
+  const currentEquipped = pet.equippedCosmetics ?? {
+    hat: null,
+    accessory: null,
+    aura: null,
+  };
+
+  const updatedPet: PetState = {
+    ...pet,
+    needs: { ...pet.needs },
+    discoveredForms: [...pet.discoveredForms],
+    position: { ...pet.position },
+    careStats: {
+      ...pet.careStats,
+      foodCategoryCounts: { ...pet.careStats.foodCategoryCounts },
+    },
+    tamaCoins: Math.max(0, currentCoins - item.price),
+    ownedCosmetics: [...owned, item.id],
+    equippedCosmetics: {
+      ...currentEquipped,
+      [item.slot]: item.id,
+    },
+  };
+
+  return {
+    pet: updatedPet,
+    purchased: true,
+  };
+}
+
+/**
+ * Équipe ou déséquipe (`itemId === null`) un objet cosmétique sur un emplacement donné.
+ */
+export function equipCosmeticItem(
+  pet: PetState,
+  slot: CosmeticSlot,
+  itemId: string | null
+): { pet: PetState; equipped: boolean } {
+  const owned = Array.isArray(pet.ownedCosmetics) ? pet.ownedCosmetics : [];
+  const currentEquipped = pet.equippedCosmetics ?? {
+    hat: null,
+    accessory: null,
+    aura: null,
+  };
+
+  if (itemId === null) {
+    const updatedPet: PetState = {
+      ...pet,
+      needs: { ...pet.needs },
+      discoveredForms: [...pet.discoveredForms],
+      position: { ...pet.position },
+      careStats: {
+        ...pet.careStats,
+        foodCategoryCounts: { ...pet.careStats.foodCategoryCounts },
+      },
+      ownedCosmetics: [...owned],
+      equippedCosmetics: {
+        ...currentEquipped,
+        [slot]: null,
+      },
+    };
+    return { pet: updatedPet, equipped: true };
+  }
+
+  if (!owned.includes(itemId)) {
+    return { pet, equipped: false };
+  }
+
+  const updatedPet: PetState = {
+    ...pet,
+    needs: { ...pet.needs },
+    discoveredForms: [...pet.discoveredForms],
+    position: { ...pet.position },
+    careStats: {
+      ...pet.careStats,
+      foodCategoryCounts: { ...pet.careStats.foodCategoryCounts },
+    },
+    ownedCosmetics: [...owned],
+    equippedCosmetics: {
+      ...currentEquipped,
+      [slot]: itemId,
+    },
+  };
+
+  return { pet: updatedPet, equipped: true };
+}
+
+/**
+ * Fait jouer le familier avec le Tamagotchi d'un ami en visite (Salon Online ou Code Passeport).
+ * Octroie `+22` de bonheur, `+25` `tamaCoins`, apaise `needsPlay` et `needsCuddle`,
+ * et incrémente `totalGamesPlayed` ainsi que `totalGamesWon`.
+ */
+export function playTogetherWithFriend(
+  pet: PetState,
+  nowMs?: number
+): { pet: PetState; happinessGain: number; coinsEarned: number } {
+  const safeNow =
+    nowMs !== undefined && Number.isFinite(nowMs) ? nowMs : pet.lastUpdatedAt;
+  const happinessGain = 22;
+  const coinsEarned = 25;
+
+  const updatedPet: PetState = {
+    ...pet,
+    isSleeping: false,
+    lastUpdatedAt: safeNow,
+    needsPlay: false,
+    needsCuddle: false,
+    needs: {
+      ...pet.needs,
+      happiness: clampNeed(pet.needs.happiness + happinessGain),
+    },
+    discoveredForms: [...pet.discoveredForms],
+    position: { ...pet.position },
+    tamaCoins: (pet.tamaCoins ?? 0) + coinsEarned,
+    ownedCosmetics: [...(pet.ownedCosmetics ?? [])],
+    equippedCosmetics: {
+      ...(pet.equippedCosmetics ?? { hat: null, accessory: null, aura: null }),
+    },
+    careStats: {
+      ...pet.careStats,
+      foodCategoryCounts: { ...pet.careStats.foodCategoryCounts },
+      totalGamesPlayed: pet.careStats.totalGamesPlayed + 1,
+      totalGamesWon: pet.careStats.totalGamesWon + 1,
+      lastPlayedAt: safeNow,
+    },
+  };
+
+  return {
+    pet: updatedPet,
+    happinessGain,
+    coinsEarned,
+  };
+}
+
+/** Alias de `playTogetherWithFriend`. */
+export const playWithFriendPet = playTogetherWithFriend;
+
+/**
+ * Encode le profil du familier en un Code Passeport Tamagotchi portable (`TAMA-...`).
+ * Utilise `btoa(encodeURIComponent(json))` pour être 100 % compatible navigateur et Node sans `Buffer`.
+ */
+export function encodeFriendPassport(pet: PetState, ownerName?: string): string {
+  const safeOwner =
+    typeof ownerName === 'string' && ownerName.trim().length > 0
+      ? ownerName.trim()
+      : 'Ami';
+
+  const payload = {
+    n: pet.name || 'Mochi',
+    o: safeOwner,
+    f: pet.formId,
+    s: pet.stage,
+    l: pet.lineage,
+    c: pet.equippedCosmetics ?? { hat: null, accessory: null, aura: null },
+    h: Math.round(clampNeed(pet.needs.happiness)),
+  };
+
+  const json = JSON.stringify(payload);
+  const b64 = btoa(encodeURIComponent(json));
+  return `TAMA-${b64}`;
+}
+
+/** Alias de `encodeFriendPassport`. */
+export const exportPassportCode = encodeFriendPassport;
+
+/**
+ * Décode un Code Passeport Tamagotchi (`TAMA-...`) en un `FriendPetProfile` valide,
+ * ou retourne `null` si le code est invalide ou corrompu.
+ */
+export function decodeFriendPassport(code: string): FriendPetProfile | null {
+  if (typeof code !== 'string') {
+    return null;
+  }
+
+  const trimmed = code.trim();
+  if (!trimmed.toUpperCase().startsWith('TAMA-')) {
+    return null;
+  }
+
+  const b64 = trimmed.slice(5).trim();
+  if (!b64) {
+    return null;
+  }
+
+  try {
+    const json = decodeURIComponent(atob(b64));
+    const parsed: unknown = JSON.parse(json);
+    if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) {
+      return null;
+    }
+
+    const record = parsed as Record<string, unknown>;
+    if (!isValidFormId(record.f)) {
+      return null;
+    }
+
+    const formId = record.f;
+    const rawName =
+      typeof record.n === 'string' && record.n.trim().length > 0
+        ? record.n.trim()
+        : 'Mochi';
+    const rawOwner =
+      typeof record.o === 'string' && record.o.trim().length > 0
+        ? record.o.trim()
+        : 'Ami';
+
+    const rawCosmetics =
+      typeof record.c === 'object' && record.c !== null && !Array.isArray(record.c)
+        ? (record.c as Record<string, unknown>)
+        : {};
+
+    return {
+      id: `passport_${formId}_${rawName}`,
+      name: rawName,
+      ownerName: rawOwner,
+      formId,
+      stage: FORM_TO_STAGE[formId],
+      lineage: FORM_TO_LINEAGE[formId],
+      equippedCosmetics: {
+        hat: typeof rawCosmetics.hat === 'string' ? rawCosmetics.hat : null,
+        accessory:
+          typeof rawCosmetics.accessory === 'string'
+            ? rawCosmetics.accessory
+            : null,
+        aura: typeof rawCosmetics.aura === 'string' ? rawCosmetics.aura : null,
+      },
+      happiness: clampNeed(typeof record.h === 'number' ? record.h : 85),
+      animationState: 'happy',
+    };
+  } catch {
+    return null;
+  }
+}
+
+/** Alias de `decodeFriendPassport`. */
+export const importPassportCode = decodeFriendPassport;

@@ -6,6 +6,7 @@
 import { clampNeed } from './needsSystem';
 import type {
   CareStats,
+  EquippedCosmetics,
   FoodCategory,
   FormId,
   LineageId,
@@ -124,10 +125,7 @@ export function createDefaultSettings(): UserSettings {
 /**
  * Crée les statistiques de soin initiales d'un nouveau familier.
  */
-export function createInitialCareStats(nowMs?: number): CareStats {
-  const safeNow =
-    typeof nowMs === 'number' && Number.isFinite(nowMs) ? nowMs : Date.now();
-
+export function createInitialCareStats(_nowMs?: number): CareStats {
   return {
     totalMeals: 0,
     foodCategoryCounts: {
@@ -146,7 +144,7 @@ export function createInitialCareStats(nowMs?: number): CareStats {
     pcMouseClicks: 0,
     pcKeyPresses: 0,
     pcActiveSeconds: 0,
-    lastPlayedAt: safeNow,
+    lastPlayedAt: 0,
   };
 }
 
@@ -182,6 +180,13 @@ export function createInitialPetState(name?: string, nowMs?: number): PetState {
     discoveredForms: ['egg'],
     position: { x: 240, y: 240 },
     careStats: createInitialCareStats(safeNow),
+    tamaCoins: 100,
+    ownedCosmetics: [],
+    equippedCosmetics: {
+      hat: null,
+      accessory: null,
+      aura: null,
+    },
   };
 }
 
@@ -518,7 +523,39 @@ export function validateAndMigrateSaveData(
       sanitizeOptionalNonNegativeNumber(rawCareStats.pcKeyPresses, 0)
     ),
     pcActiveSeconds: sanitizeOptionalNonNegativeNumber(rawCareStats.pcActiveSeconds, 0),
-    lastPlayedAt: sanitizeOptionalNonNegativeNumber(rawCareStats.lastPlayedAt, safeNow),
+    lastPlayedAt: sanitizeOptionalNonNegativeNumber(rawCareStats.lastPlayedAt, 0),
+  };
+
+  const tamaCoins = Math.floor(
+    sanitizeOptionalNonNegativeNumber(rawPet.tamaCoins, defaults.tamaCoins)
+  );
+
+  const ownedCosmetics: string[] = Array.isArray(rawPet.ownedCosmetics)
+    ? Array.from(
+        new Set(
+          rawPet.ownedCosmetics.filter(
+            (item): item is string => typeof item === 'string' && item.trim().length > 0
+          )
+        )
+      )
+    : [];
+
+  const rawEquipped = isPlainObject(rawPet.equippedCosmetics)
+    ? rawPet.equippedCosmetics
+    : {};
+  const equippedCosmetics: EquippedCosmetics = {
+    hat:
+      typeof rawEquipped.hat === 'string' && rawEquipped.hat.trim().length > 0
+        ? rawEquipped.hat.trim()
+        : null,
+    accessory:
+      typeof rawEquipped.accessory === 'string' && rawEquipped.accessory.trim().length > 0
+        ? rawEquipped.accessory.trim()
+        : null,
+    aura:
+      typeof rawEquipped.aura === 'string' && rawEquipped.aura.trim().length > 0
+        ? rawEquipped.aura.trim()
+        : null,
   };
 
   const defaultSettings = createDefaultSettings();
@@ -582,6 +619,9 @@ export function validateAndMigrateSaveData(
       discoveredForms: Array.from(discoveredSet),
       position,
       careStats,
+      tamaCoins,
+      ownedCosmetics,
+      equippedCosmetics,
     },
     settings,
   };
