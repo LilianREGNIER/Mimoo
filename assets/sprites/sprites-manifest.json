@@ -1,0 +1,84 @@
+{
+  "version": 1,
+  "sheetWidth": 256,
+  "sheetHeight": 384,
+  "frameWidth": 64,
+  "frameHeight": 64,
+  "columns": 4,
+  "framesPerRow": 4,
+  "rows": {
+    "idle": 0,
+    "walk": 1,
+    "eat": 2,
+    "happy": 3,
+    "sleep": 4,
+    "sad": 5
+  },
+  "forms": [
+    {
+      "id": "egg",
+      "stage": "egg",
+      "stageIndex": 0,
+      "name": "Œuf Mystère",
+      "file": "egg.png",
+      "path": "assets/sprites/egg.png"
+    },
+    {
+      "id": "baby_blob",
+      "stage": "baby",
+      "stageIndex": 1,
+      "name": "Bébé Blob",
+      "file": "baby_blob.png",
+      "path": "assets/sprites/baby_blob.png"
+    },
+    {
+      "id": "child_sprout",
+      "stage": "child",
+      "stageIndex": 2,
+      "name": "Jeune Pousse",
+      "file": "child_sprout.png",
+      "path": "assets/sprites/child_sprout.png"
+    },
+    {
+      "id": "adult_solar",
+      "stage": "adult",
+      "stageIndex": 3,
+      "name": "Adulte Solaire",
+      "file": "adult_solar.png",
+      "path": "assets/sprites/adult_solar.png"
+    },
+    {
+      "id": "adult_athletic",
+      "stage": "adult",
+      "stageIndex": 3,
+      "name": "Adulte Athlétique",
+      "file": "adult_athletic.png",
+      "path": "assets/sprites/adult_athletic.png"
+    },
+    {
+      "id": "adult_gourmet",
+      "stage": "adult",
+      "stageIndex": 3,
+      "name": "Adulte Gourmet",
+      "file": "adult_gourmet.png",
+      "path": "assets/sprites/adult_gourmet.png"
+    },
+    {
+      "id": "adult_shadow",
+      "stage": "adult",
+      "stageIndex": 3,
+      "name": "Adulte Ombre",
+      "file": "adult_shadow.png",
+      "path": "assets/sprites/adult_shadow.png"
+    }
+  ],
+  "sprites": {
+    "egg": "assets/sprites/egg.png",
+    "baby_blob": "assets/sprites/baby_blob.png",
+    "child_sprout": "assets/sprites/child_sprout.png",
+    "adult_solar": "assets/sprites/adult_solar.png",
+    "adult_athletic": "assets/sprites/adult_athletic.png",
+    "adult_gourmet": "assets/sprites/adult_gourmet.png",
+    "adult_shadow": "assets/sprites/adult_shadow.png"
+  }
+}
