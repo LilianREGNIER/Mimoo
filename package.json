@@ -2,6 +2,7 @@
   "name": "tamagotchi-desktop-pet",
   "version": "1.0.0",
   "description": "Tamagotchi Desktop Pet pour Windows 10/11",
+  "author": "DesktopPet Team",
   "main": "dist/main/main.js",
   "private": true,
   "scripts": {
@@ -11,6 +12,7 @@
     "build": "npm run generate:assets && npm run build:main && npm run build:renderer",
     "start": "npm run build && electron .",
     "dev": "npm run build && electron .",
+    "smoke": "npm run build && electron . --smoke-test",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "test:watch": "vitest",
@@ -19,6 +21,7 @@
   "build": {
     "appId": "com.tamagotchi.desktoppet",
     "productName": "Tamagotchi Desktop Pet",
+    "electronDist": "node_modules/electron/dist",
     "directories": {
       "output": "release"
     },
@@ -29,10 +32,17 @@
       "package.json"
     ],
     "win": {
+      "signAndEditExecutable": false,
       "target": [
         "nsis",
         "portable"
       ]
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true
     }
   },
   "devDependencies": {
