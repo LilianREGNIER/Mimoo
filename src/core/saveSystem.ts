@@ -228,7 +228,7 @@ export function validateAndMigrateSaveData(
     ? rawPet.formId
     : (() => {
         warnings.push(`FormId invalide (${String(rawPet.formId)}), repli sur 'egg'.`);
-        return 'egg';
+        return 'egg' as const;
       })();
 
   const stage: StageId = isValidStageId(rawPet.stage)
