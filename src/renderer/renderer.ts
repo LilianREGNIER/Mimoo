@@ -1,7 +1,8 @@
 /**
  * Point d'entrée principal du processus Renderer (`src/renderer/renderer.ts`).
  * Orchestre `PetEngine`, la boucle de rendu Canvas 2D à FPS adaptatif (30 FPS actif / 5 FPS repos),
- * le click-through sélectif (`HitTester`), les déplacements (`PetActor`), les 2 mini-jeux et l'UI.
+ * l'éclosion interactive de l'œuf en 5 clics, le nettoyage à l'éponge, les animations de besoins
+ * (faim, besoin de câlin, besoin de jouer), le suivi d'activité PC et le Menu Spécial Test / Sandbox.
  */
 
 import defaultFoodsJson from '../../data/foods.json';
@@ -10,16 +11,20 @@ import defaultSpeciesJson from '../../data/species.json';
 import {
   createInitialSaveData,
   PetEngine,
+  STARTER_FORM_IDS,
   type BootstrapPayload,
   type DisplayBoundsInfo,
   type FoodCategory,
   type FoodItem,
   type FormId,
   type GameConfig,
+  type LineageId,
   type MiniGameResult,
   type NeedKey,
   type PetState,
+  type SandboxConditionType,
   type SpeciesFormDefinition,
+  type StarterFormId,
   type TrayActionType,
 } from '../core';
 import { HitTester } from './hitTester';
@@ -32,6 +37,13 @@ const STAGE_LABELS: Record<string, string> = {
   baby: 'Bébé',
   child: 'Enfant',
   adult: 'Adulte',
+};
+
+const LINEAGE_LABELS: Record<LineageId, string> = {
+  none: 'Céleste',
+  aqua: 'Aquatique 💧',
+  flora: 'Sylvestre 🌱',
+  ember: 'Astrale 🔥',
 };
 
 const FOOD_CATEGORY_LABELS: Record<FoodCategory, string> = {
@@ -48,15 +60,15 @@ const NEED_ALERT_LABELS: Record<NeedKey, { title: string; speech: string }> = {
   },
   energy: {
     title: 'Votre familier est épuisé ! ⚡',
-    speech: "Je tombe de fatigue... Zzz 💤",
+    speech: 'Je tombe de fatigue... Zzz 💤',
   },
   happiness: {
     title: 'Votre familier se sent seul ! 💖',
     speech: "On joue ensemble ? J'ai besoin d'un câlin 🥺",
   },
   cleanliness: {
-    title: 'Un petit nettoyage est nécessaire ! ✨',
-    speech: "Mon espace a besoin d'un coup de balai ! 🧹",
+    title: 'Un petit coup d’éponge est nécessaire ! 🧽',
+    speech: "J'ai besoin d'un bon brossage à l'éponge ! 🧽🫧",
   },
 };
 
@@ -100,6 +112,9 @@ class DesktopPetRendererApp {
   private hitTester!: HitTester;
   private displays: DisplayBoundsInfo[] = [];
 
+  // Mode Éponge / Brosse interactif
+  private isSpongeMode = false;
+
   // Cadence de rendu adaptative (30 FPS actif / 5 FPS éco repos)
   private isActiveFpsMode = true;
   private currentTargetFps = 30;
@@ -107,6 +122,8 @@ class DesktopPetRendererApp {
   private lastLogicTickTimestamp = 0;
   private lastAutoSaveTimestamp = 0;
   private lastNotificationTimestamp = 0;
+  private lastOverlayInputTimestamp = 0;
+  private hasMainPcActivityHook = false;
   private speechHideTimeout: number | null = null;
 
   // Références DOM principales
@@ -114,6 +131,10 @@ class DesktopPetRendererApp {
   private readonly drawerFoodsEl = document.getElementById('drawer-foods');
   private readonly drawerGamesEl = document.getElementById('drawer-games');
   private readonly statsModalEl = document.getElementById('stats-modal');
+  private readonly sandboxModalEl = document.getElementById('sandbox-modal');
+  private readonly spongeBannerEl = document.getElementById('sponge-banner');
+  private readonly spongeBannerTextEl = document.getElementById('sponge-banner-text');
+  private readonly spongeProgressFillEl = document.getElementById('sponge-progress-fill');
   private readonly speechBubbleEl = document.getElementById('pet-speech-bubble');
   private readonly speechTextEl = document.getElementById('pet-speech-text');
 
@@ -159,7 +180,7 @@ class DesktopPetRendererApp {
       species: payload.species,
     });
 
-    // 2. Initialisation du moteur de spritesheets
+    // 2. Initialisation du moteur de spritesheets (19 formes, 8 lignes)
     this.animator = new SpriteAnimator();
     await this.animator.preloadAllSprites();
 
@@ -174,8 +195,9 @@ class DesktopPetRendererApp {
         : Math.round(window.innerWidth * 0.5);
 
     this.petActor = new PetActor(startX, window.innerHeight - 95, {
-      onClick: () => this.toggleHudPanel(),
+      onClick: () => this.handlePetOrEggClick(),
       onPetRub: (x, y) => this.handlePetAction(x, y, true),
+      onSpongeScrub: (delta, cx, cy) => this.handleSpongeScrub(delta, cx, cy),
       onPositionChanged: (x, y) => {
         this.engine.setPosition({ x, y });
         this.updateFloatingPanelsPosition();
@@ -193,24 +215,34 @@ class DesktopPetRendererApp {
       onUiStateChanged: () => this.hitTester?.refresh(),
     });
 
-    // 5. Initialisation du HitTester pour le click-through sélectif
+    // 5. Initialisation du HitTester pour le click-through sélectif (+90 px en mode éponge)
     this.hitTester = new HitTester({
       petActor: this.petActor,
       isPointOverMiniGameStar: (cx, cy) => this.miniGames.isPointOverStar(cx, cy),
+      isSpongeModeActive: () => this.isSpongeMode,
     });
 
     // 6. Construction des listes dynamiques et écouteurs d'événements UI / IPC
     this.renderFoodsDrawerList();
+    this.renderSandboxLineagesGrid();
     this.populateDisplaysSelect();
     this.syncSettingsControls();
     this.bindPointerAndDomEvents();
     this.bindIpcListeners();
 
     this.refreshHudUI();
+    this.refreshSandboxMetricsUI();
     this.hitTester.evaluateAt(-1000, -1000);
 
-    // Message d'accueil ou de retour hors-ligne
-    if (payload.offlineReport && payload.offlineReport.elapsedMs > 120_000) {
+    // Message d'accueil selon le stade (œuf à éclore ou familier éclos)
+    if (initialPet.stage === 'egg') {
+      const clicks = initialPet.careStats.eggClicks ?? 0;
+      const req = this.engine.getConfig().eggClicksRequired || 5;
+      this.showSpeechBubble(
+        `🥚 Cliquez sur l'œuf pour le faire éclore ! (${clicks}/${req})`,
+        4500
+      );
+    } else if (payload.offlineReport && payload.offlineReport.elapsedMs > 120_000) {
       const minutesAway = Math.round(payload.offlineReport.elapsedMs / 60000);
       this.showSpeechBubble(`Content de te revoir après ${minutesAway} min ! 💖`, 4000);
     } else {
@@ -235,7 +267,7 @@ class DesktopPetRendererApp {
 
   /**
    * Boucle principale `requestAnimationFrame` avec limitation adaptative de FPS :
-   * - Mode actif (~30 FPS) : marche, interaction souris, mini-jeu, animation temporaire, menu ouvert.
+   * - Mode actif (~30 FPS) : marche, interaction souris, éponge, besoin actif, mini-jeu, menu ouvert.
    * - Mode repos (5 FPS) : familier immobile (`idle` ou `sleep`) et aucun panneau/mini-jeu ouvert.
    */
   private animationLoop(timestamp: number): void {
@@ -269,6 +301,8 @@ class DesktopPetRendererApp {
 
   /**
    * Calcule si le moteur doit tourner à `fpsLimitActive` (~30 FPS) ou `fpsLimitIdle` (5 FPS).
+   * Note performance : utilise une cadence fluide (30 FPS) quand le pet affiche une animation
+   * de besoin (`hungry`, `need_cuddle`, `need_play`), tremble ou est en `isSpongeMode`.
    */
   private updateAdaptiveFpsTarget(): void {
     const pet = this.engine.getState();
@@ -276,21 +310,34 @@ class DesktopPetRendererApp {
 
     const isAnyMenuOpen =
       !this.hudEl?.classList.contains('hidden') ||
-      !this.statsModalEl?.classList.contains('hidden');
+      !this.statsModalEl?.classList.contains('hidden') ||
+      !this.sandboxModalEl?.classList.contains('hidden');
 
     const isSpeechVisible = !this.speechBubbleEl?.classList.contains('hidden');
+    const animState = this.animator.getState();
+    const isNeedAnimationActive =
+      !pet.isSleeping &&
+      pet.stage !== 'egg' &&
+      (animState === 'hungry' ||
+        animState === 'need_cuddle' ||
+        animState === 'need_play' ||
+        animState === 'cleaning' ||
+        pet.needs.cleanliness < 60 ||
+        pet.poopCount > 0);
 
     const isActive =
+      this.isSpongeMode ||
       this.petActor.isMoving ||
       this.petActor.isDragging ||
       this.petActor.isHovering ||
       this.miniGames.isPlaying() ||
       this.animator.isInTemporaryAnimation() ||
+      this.animator.isEggShaking() ||
       this.animator.hasActiveParticles() ||
+      isNeedAnimationActive ||
       isAnyMenuOpen ||
       isSpeechVisible;
 
-    // Respecte la consigne stricte : ~30 FPS actif / 5 FPS repos
     const configuredActive = Math.min(30, Math.max(24, settings.fpsLimitActive || 30));
     const configuredIdle = Math.min(6, Math.max(4, Math.min(5, settings.fpsLimitIdle || 5)));
 
@@ -306,11 +353,21 @@ class DesktopPetRendererApp {
 
   /**
    * Tick logique exécuté chaque seconde :
-   * décrémente les besoins, vérifie l'évolution, envoie les alertes critiques et sauvegarde périodiquement.
+   * décrémente les besoins, vérifie l'évolution, met à jour l'activité PC et sauvegarde périodiquement.
    */
   private runOneSecondLogicTick(deltaSeconds: number): void {
+    const nowMs = Date.now();
+
+    // Si aucun hook IPC global n'envoie de lots, comptabilise les secondes actives suite aux interactions locales
+    if (!this.hasMainPcActivityHook && nowMs - this.lastOverlayInputTimestamp < 5000) {
+      this.engine.recordPcActivity(
+        { mouseClicks: 0, keyPresses: 0, activeSeconds: deltaSeconds },
+        nowMs
+      );
+    }
+
     const prevFormId = this.engine.getState().formId;
-    const tickResult = this.engine.tick(deltaSeconds, Date.now());
+    const tickResult = this.engine.tick(deltaSeconds, nowMs);
     const evoCheck = this.engine.checkEvolution();
 
     const evolved = tickResult.evolved || evoCheck.evolved;
@@ -329,10 +386,9 @@ class DesktopPetRendererApp {
     }
 
     // Notification discrète en cas de besoin critique (avec anti-spam de 3 minutes)
-    if (tickResult.criticalNeeds.length > 0) {
-      const now = Date.now();
-      if (now - this.lastNotificationTimestamp > 180_000) {
-        this.lastNotificationTimestamp = now;
+    if (tickResult.criticalNeeds.length > 0 && tickResult.pet.stage !== 'egg') {
+      if (nowMs - this.lastNotificationTimestamp > 180_000) {
+        this.lastNotificationTimestamp = nowMs;
         const firstCritical = tickResult.criticalNeeds[0];
         const alertInfo = NEED_ALERT_LABELS[firstCritical];
         this.showSpeechBubble(alertInfo.speech, 4000);
@@ -346,6 +402,12 @@ class DesktopPetRendererApp {
     }
 
     this.refreshHudUI();
+    if (!this.sandboxModalEl?.classList.contains('hidden')) {
+      this.refreshSandboxMetricsUI();
+    }
+    if (!this.statsModalEl?.classList.contains('hidden')) {
+      this.refreshStatsAndCompendiumUI();
+    }
 
     // Sauvegarde automatique toutes les 30 secondes
     const nowPerf = performance.now();
@@ -359,20 +421,32 @@ class DesktopPetRendererApp {
     const pet = this.engine.getState();
     const criticalNeeds = this.engine.getCriticalNeeds();
 
+    const hasPriorityNeedPose =
+      pet.needs.hunger < 45 || pet.needsCuddle || pet.needsPlay;
+
     const canWalk =
       pet.stage !== 'egg' &&
       !pet.isSleeping &&
+      !this.isSpongeMode &&
       !this.animator.isInTemporaryAnimation() &&
-      this.miniGames.getActiveGame() !== 'rps_duel';
+      this.miniGames.getActiveGame() !== 'rps_duel' &&
+      (this.miniGames.getActiveGame() === 'star_catch' || !hasPriorityNeedPose);
 
     this.petActor.update(dtSeconds, { canWalk });
     this.miniGames.update(dtSeconds);
 
     this.animator.update(dtSeconds, {
+      stage: pet.stage,
       isSleeping: pet.isSleeping,
-      isCritical: criticalNeeds.length > 0 || pet.poopCount >= 3,
+      isCritical: criticalNeeds.length > 0 || pet.poopCount >= 2,
       isMoving: this.petActor.isMoving,
       isPlayingGame: this.miniGames.isPlaying(),
+      isSpongeMode: this.isSpongeMode,
+      hunger: pet.needs.hunger,
+      cleanliness: pet.needs.cleanliness,
+      poopCount: pet.poopCount,
+      needsCuddle: pet.needsCuddle,
+      needsPlay: pet.needsPlay,
       petX: this.petActor.x,
       petY: this.petActor.y,
     });
@@ -393,6 +467,12 @@ class DesktopPetRendererApp {
       scale: this.petActor.getEffectiveScale(),
       flipX: this.petActor.flipX,
       poopCount: pet.poopCount,
+      cleanliness: pet.needs.cleanliness,
+      cleaningProgress: pet.cleaningProgress,
+      eggClicks: pet.careStats.eggClicks ?? 0,
+      isSpongeMode: this.isSpongeMode,
+      cursorX: this.petActor.lastCursorX,
+      cursorY: this.petActor.lastCursorY,
     });
 
     this.miniGames.render(this.ctx);
@@ -405,6 +485,10 @@ class DesktopPetRendererApp {
       this.petActor.handlePointerMove(e.clientX, e.clientY);
     });
 
+    window.addEventListener('mousedown', () => {
+      this.recordLocalOverlayInput(1, 0);
+    });
+
     this.canvas.addEventListener('mousedown', (e) => {
       if (this.miniGames.handleCanvasMouseDown(e.clientX, e.clientY)) {
         return;
@@ -412,14 +496,35 @@ class DesktopPetRendererApp {
       this.petActor.handlePointerDown(e.clientX, e.clientY, e.button);
     });
 
+    // Clic droit sur le familier ou l'œuf -> ouvre/ferme le HUD à tout moment
+    this.canvas.addEventListener('contextmenu', (e) => {
+      if (this.petActor.containsPoint(e.clientX, e.clientY, 24)) {
+        e.preventDefault();
+        this.toggleHudPanel();
+      }
+    });
+
     window.addEventListener('mouseup', () => {
       this.petActor.handlePointerUp();
     });
 
     window.addEventListener('keydown', (e) => {
+      this.recordLocalOverlayInput(0, 1);
+
       if (e.key === 'Escape') {
+        if (this.isSpongeMode) {
+          this.stopSpongeMode();
+        }
         this.closeAllPanels();
+      } else if (e.key === 'F2') {
+        e.preventDefault();
+        this.toggleSandboxModal();
       }
+    });
+
+    // Bouton d'annulation du mode Éponge
+    document.getElementById('btn-cancel-sponge')?.addEventListener('click', () => {
+      this.stopSpongeMode();
     });
 
     // Boutons d'en-tête et de fermeture du HUD
@@ -435,7 +540,7 @@ class DesktopPetRendererApp {
       this.hitTester.refresh();
     });
 
-    // 6 Actions principales du HUD
+    // Actions principales du HUD
     document.getElementById('btn-action-feed')?.addEventListener('click', () => {
       this.drawerGamesEl?.classList.add('hidden');
       this.drawerFoodsEl?.classList.toggle('hidden');
@@ -464,6 +569,10 @@ class DesktopPetRendererApp {
 
     document.getElementById('btn-action-stats')?.addEventListener('click', () => {
       this.openStatsModal('tab-stats');
+    });
+
+    document.getElementById('btn-action-sandbox')?.addEventListener('click', () => {
+      this.openSandboxModal();
     });
 
     // Lancement des 2 mini-jeux
@@ -558,6 +667,114 @@ class DesktopPetRendererApp {
     document.getElementById('btn-reset-pet')?.addEventListener('click', () => {
       void this.handleResetPet();
     });
+
+    // Événements du Menu Spécial Test / Sandbox (#sandbox-modal)
+    this.bindSandboxEvents();
+  }
+
+  private bindSandboxEvents(): void {
+    document.getElementById('btn-close-sandbox')?.addEventListener('click', () => {
+      this.sandboxModalEl?.classList.add('hidden');
+      this.hitTester.refresh();
+    });
+
+    // 1) Recommencer / Choisir un Starter
+    document.getElementById('btn-sb-starter-egg')?.addEventListener('click', () => {
+      this.applySandboxForm(
+        'egg',
+        "🥚 Nouvel Œuf (0/5 clics) ! Cliquez 5 fois sur l'œuf pour le faire éclore !"
+      );
+    });
+
+    document.getElementById('btn-sb-starter-aqua')?.addEventListener('click', () => {
+      this.applySandboxForm('baby_aqua', "💧 Starter Eau : P'tit Goutte sélectionné !");
+    });
+
+    document.getElementById('btn-sb-starter-flora')?.addEventListener('click', () => {
+      this.applySandboxForm('baby_flora', "🌱 Starter Plante : P'tit Bourgeon sélectionné !");
+    });
+
+    document.getElementById('btn-sb-starter-ember')?.addEventListener('click', () => {
+      this.applySandboxForm('baby_ember', "🔥 Starter Feu : P'tite Braise sélectionné !");
+    });
+
+    document.getElementById('btn-sb-starter-random')?.addEventListener('click', () => {
+      const idx = Math.floor(Math.random() * STARTER_FORM_IDS.length);
+      const randomStarter: StarterFormId = STARTER_FORM_IDS[idx] ?? 'baby_aqua';
+      const updatedPet = this.engine.forceSetForm(randomStarter, Date.now());
+      const formDef = this.engine.getCurrentSpeciesForm();
+
+      this.syncActorWithCurrentForm();
+      this.animator.setState('evolve', 2400);
+      this.animator.spawnParticles('confetti', this.petActor.x, this.petActor.y, 12);
+      this.animator.spawnParticles('star', this.petActor.x, this.petActor.y, 8);
+
+      const lineageLabel = LINEAGE_LABELS[updatedPet.lineage] ?? updatedPet.lineage;
+      this.showSpeechBubble(
+        `🎉 Éclosion ! Voici ${formDef?.name ?? randomStarter} (Lignée ${lineageLabel}) !`,
+        4500
+      );
+      this.refreshAllPanelsUI();
+      void this.persistSaveState();
+    });
+
+    // 2) Forcer l'évolution suivante de la lignée actuelle
+    document.getElementById('btn-sb-force-evolve')?.addEventListener('click', () => {
+      const res = this.engine.forceEvolve(undefined, Date.now());
+      if (res.evolved && res.newForm) {
+        this.handleEvolutionTriggered(res.newForm);
+        this.refreshAllPanelsUI();
+      } else {
+        this.showSpeechBubble('⚡ Ce familier a déjà atteint sa forme adulte finale ! ✨');
+      }
+    });
+
+    // 3) Simuler les Besoins & Animations à la demande
+    document.getElementById('btn-sb-sim-hungry')?.addEventListener('click', () => {
+      this.runSandboxSimulation(
+        'hungry',
+        "🍖 Simulation Faim : J'ai le ventre qui gargouille !"
+      );
+    });
+
+    document.getElementById('btn-sb-sim-dirty')?.addEventListener('click', () => {
+      this.runSandboxSimulation(
+        'dirty',
+        "🧽 Simulation Saleté : Passez l'éponge sur votre familier !"
+      );
+    });
+
+    document.getElementById('btn-sb-sim-cuddle')?.addEventListener('click', () => {
+      this.runSandboxSimulation(
+        'need_cuddle',
+        '🥺 Simulation Câlin : Bras tendus, caressez-moi ! 💖'
+      );
+    });
+
+    document.getElementById('btn-sb-sim-play')?.addEventListener('click', () => {
+      this.runSandboxSimulation(
+        'need_play',
+        "🎾 Simulation Jeu : J'ai trop envie de jouer ! ⭐"
+      );
+    });
+
+    document.getElementById('btn-sb-sim-tired')?.addEventListener('click', () => {
+      this.runSandboxSimulation('tired', '💤 Simulation Fatigue : Énergie très basse...');
+    });
+
+    document.getElementById('btn-sb-sim-marathon')?.addEventListener('click', () => {
+      this.runSandboxSimulation(
+        'boost_marathon',
+        '⌨️ Boost Marathon appliqué (+15 000 entrées PC & +40h) !'
+      );
+    });
+
+    document.getElementById('btn-sb-sim-restore')?.addEventListener('click', () => {
+      this.runSandboxSimulation(
+        'full_restore',
+        '✨ Toutes les jauges sont restaurées à 100% !'
+      );
+    });
   }
 
   private bindIpcListeners(): void {
@@ -570,6 +787,40 @@ class DesktopPetRendererApp {
       this.populateDisplaysSelect();
       this.petActor.centerOnScreen();
     });
+
+    window.petAPI?.onPcActivityBatch?.((batch) => {
+      this.hasMainPcActivityHook = true;
+      const res = this.engine.recordPcActivity(batch, Date.now());
+      if (res.evolved && res.newForm) {
+        this.handleEvolutionTriggered(res.newForm);
+      }
+      this.refreshHudUI();
+      if (!this.sandboxModalEl?.classList.contains('hidden')) {
+        this.refreshSandboxMetricsUI();
+      }
+      if (!this.statsModalEl?.classList.contains('hidden')) {
+        this.refreshStatsAndCompendiumUI();
+      }
+    });
+  }
+
+  private recordLocalOverlayInput(mouseClicks: number, keyPresses: number): void {
+    const now = Date.now();
+    this.lastOverlayInputTimestamp = now;
+    if (this.hasMainPcActivityHook) {
+      return;
+    }
+    const res = this.engine.recordPcActivity(
+      { mouseClicks, keyPresses, activeSeconds: 0 },
+      now
+    );
+    if (res.evolved && res.newForm) {
+      this.handleEvolutionTriggered(res.newForm);
+    }
+    this.refreshHudUI();
+    if (!this.sandboxModalEl?.classList.contains('hidden')) {
+      this.refreshSandboxMetricsUI();
+    }
   }
 
   private handleTrayAction(action: TrayActionType): void {
@@ -598,6 +849,9 @@ class DesktopPetRendererApp {
       case 'open-compendium':
         this.openStatsModal('tab-compendium');
         break;
+      case 'open-sandbox':
+        this.openSandboxModal();
+        break;
       case 'center-pet':
         this.petActor.centerOnScreen();
         this.showSpeechBubble('Me revoilà au centre du bureau ! 👋');
@@ -607,6 +861,50 @@ class DesktopPetRendererApp {
         break;
     }
     this.hitTester.refresh();
+  }
+
+  /**
+   * Gère le clic sur le familier :
+   * - Si c'est un œuf (`stage === 'egg'`), déclenche `engine.clickEgg()`, fait trembler l'œuf,
+   *   projette des éclats/étoiles et, au 5ème clic, déclenche l'éclosion festive !
+   * - Sinon, ouvre ou ferme la bulle HUD.
+   */
+  private handlePetOrEggClick(): void {
+    const currentPet = this.engine.getState();
+
+    if (currentPet.stage === 'egg' || currentPet.formId === 'egg') {
+      const result = this.engine.clickEgg(Date.now());
+      this.animator.triggerEggShake(350);
+      this.animator.spawnParticles('egg_shard', this.petActor.x, this.petActor.y, 6);
+      this.animator.spawnParticles('star', this.petActor.x, this.petActor.y, 4);
+
+      if (!result.hatched) {
+        this.showSpeechBubble(
+          `Craaac ! (${result.eggClicks}/${result.clicksRequired} clics pour éclore) 🥚`,
+          3000
+        );
+      } else if (result.hatchedForm) {
+        this.syncActorWithCurrentForm();
+        this.animator.setState('evolve', 2800);
+        this.animator.spawnParticles('confetti', this.petActor.x, this.petActor.y, 16);
+        this.animator.spawnParticles('star', this.petActor.x, this.petActor.y, 12);
+        this.animator.spawnParticles('sparkle', this.petActor.x, this.petActor.y, 10);
+
+        const lineageLabel =
+          LINEAGE_LABELS[result.pet.lineage] ?? result.pet.lineage;
+        this.showSpeechBubble(
+          `🎉 Éclosion ! Voici ${result.hatchedForm.name} (Lignée ${lineageLabel}) !`,
+          5200
+        );
+        this.showHudPanel();
+      }
+
+      this.refreshAllPanelsUI();
+      void this.persistSaveState();
+      return;
+    }
+
+    this.toggleHudPanel();
   }
 
   private canStartMiniGame(): boolean {
@@ -629,12 +927,12 @@ class DesktopPetRendererApp {
   private handleFeedFood(food: FoodItem): void {
     const result = this.engine.feed(food.id, Date.now());
     if (!result.accepted) {
-      if (result.reason === 'stage_egg') {
-        this.showSpeechBubble("Un œuf n'a pas encore de bouche ! 🥚");
-      } else if (result.reason === 'pet_sleeping') {
+      if (result.reason === 'egg_cannot_eat' || result.reason === 'stage_egg') {
+        this.showSpeechBubble("Un œuf n'a pas encore de bouche ! Cliquez dessus pour l'éclore 🥚");
+      } else if (result.reason === 'sleeping' || result.reason === 'pet_sleeping') {
         this.showSpeechBubble('Il dort profondément... Réveille-le pour manger 💤');
-      } else if (result.reason === 'already_full') {
-        this.showSpeechBubble("Je suis déjà complètement rassasié ! 😋");
+      } else if (result.reason === 'full' || result.reason === 'already_full') {
+        this.showSpeechBubble('Je suis déjà complètement rassasié ! 😋');
       }
       return;
     }
@@ -648,12 +946,19 @@ class DesktopPetRendererApp {
       this.handleEvolutionTriggered(result.newForm);
     }
 
-    this.refreshHudUI();
+    this.refreshAllPanelsUI();
     void this.persistSaveState();
   }
 
   private handlePetAction(x: number, y: number, fromCursorRub: boolean): void {
     const pet = this.engine.getState();
+    if (pet.stage === 'egg') {
+      if (!fromCursorRub) {
+        this.handlePetOrEggClick();
+      }
+      return;
+    }
+
     if (pet.isSleeping) {
       if (!fromCursorRub) {
         this.showSpeechBubble('Il sourit dans son sommeil... Zzz 💤');
@@ -663,22 +968,27 @@ class DesktopPetRendererApp {
 
     const result = this.engine.pet(Date.now());
     this.animator.setState('happy', 1300);
-    this.animator.spawnParticles('heart', x, y, result.bonusApplied ? 5 : 2);
+    this.animator.spawnParticles('heart', x, y, result.bonusApplied ? 5 : 3);
 
     if (result.bonusApplied) {
       this.showSpeechBubble('Ronron... J’adore les caresses ! 💖');
-      this.refreshHudUI();
-      void this.persistSaveState();
     } else if (!fromCursorRub) {
-      this.showSpeechBubble('Encore des câlins ! 🤗');
+      this.showSpeechBubble('Merci pour ce câlin tout doux ! 🤗💖');
     }
+
+    this.refreshAllPanelsUI();
+    void this.persistSaveState();
   }
 
   private handleToggleSleep(): void {
     const pet = this.engine.getState();
     if (pet.stage === 'egg') {
-      this.showSpeechBubble("L'œuf se repose déjà au chaud ! 🥚");
+      this.showSpeechBubble("L'œuf se repose déjà au chaud ! Cliquez dessus pour l'éclore 🥚");
       return;
+    }
+
+    if (this.isSpongeMode) {
+      this.stopSpongeMode();
     }
 
     const result = this.engine.toggleSleep(Date.now());
@@ -692,24 +1002,100 @@ class DesktopPetRendererApp {
       this.showSpeechBubble('Coucou ! Bien dormi ☀️');
     }
 
-    this.refreshHudUI();
+    this.refreshAllPanelsUI();
     void this.persistSaveState();
   }
 
+  /**
+   * Active ou désactive le Mode Éponge / Brosse interactif (`isSpongeMode`).
+   */
   private handleCleanAction(): void {
-    const result = this.engine.clean(Date.now());
-    this.animator.setState('happy', 1300);
-    this.animator.spawnParticles('clean', this.petActor.x, this.petActor.y, 5);
-    this.animator.spawnParticles('sparkle', this.petActor.x, this.petActor.y, 4);
-
-    if (result.cleaned) {
-      this.showSpeechBubble('Tout propre et étincelant ! ✨');
-    } else {
-      this.showSpeechBubble('C’est déjà impeccable ici ! ✨');
+    const pet = this.engine.getState();
+    if (pet.stage === 'egg') {
+      this.showSpeechBubble("L'œuf est déjà tout propre ! 🥚✨");
+      return;
     }
 
+    if (this.isSpongeMode) {
+      this.stopSpongeMode();
+      return;
+    }
+
+    this.startSpongeMode();
+  }
+
+  private startSpongeMode(): void {
+    const pet = this.engine.getState();
+    if (pet.isSleeping) {
+      this.engine.toggleSleep(Date.now());
+    }
+
+    this.isSpongeMode = true;
+    this.petActor.isSpongeMode = true;
+    this.petActor.stopWalking();
+    document.body.classList.add('sponge-mode');
+
+    this.hideHudPanel();
+    this.updateSpongeBannerUI();
+    this.spongeBannerEl?.classList.remove('hidden');
+    this.updateFloatingPanelsPosition();
+    this.hitTester.refresh();
+  }
+
+  private stopSpongeMode(): void {
+    this.isSpongeMode = false;
+    this.petActor.isSpongeMode = false;
+    document.body.classList.remove('sponge-mode');
+    this.spongeBannerEl?.classList.add('hidden');
+    this.hitTester.refresh();
+  }
+
+  private updateSpongeBannerUI(): void {
+    const pet = this.engine.getState();
+    const pct = Math.round(pet.cleaningProgress ?? 0);
+    if (this.spongeBannerTextEl) {
+      this.spongeBannerTextEl.textContent = `🧽 Passez l'éponge sur ${pet.name} ! (${pct}%)`;
+    }
+    if (this.spongeProgressFillEl) {
+      this.spongeProgressFillEl.style.width = `${Math.max(0, Math.min(100, pct))}%`;
+    }
+  }
+
+  /**
+   * Appelé lorsque l'utilisateur frotte le familier en va-et-vient avec le curseur Éponge.
+   */
+  private handleSpongeScrub(scrubDelta: number, cursorX: number, cursorY: number): void {
+    if (!this.isSpongeMode) {
+      return;
+    }
+
+    const prevFormId = this.engine.getState().formId;
+    const result = this.engine.scrubClean(scrubDelta, Date.now());
+
+    // Fait jaillir des bulles de savon et de la mousse blanche à l'endroit du curseur
+    this.animator.spawnParticles('bubble', cursorX, cursorY, 2);
+    this.animator.spawnParticles('foam', cursorX, cursorY, 2);
+    this.animator.setState('cleaning', 550);
+
+    this.updateSpongeBannerUI();
     this.refreshHudUI();
-    void this.persistSaveState();
+
+    if (result.completed) {
+      this.stopSpongeMode();
+      this.animator.setState('happy', 1800);
+      this.animator.spawnParticles('sparkle', this.petActor.x, this.petActor.y, 10);
+      this.animator.spawnParticles('star', this.petActor.x, this.petActor.y, 6);
+      this.animator.spawnParticles('clean', this.petActor.x, this.petActor.y, 6);
+      this.showSpeechBubble('✨ Tout propre et étincelant !', 3600);
+
+      const currentForm = this.engine.getCurrentSpeciesForm();
+      if (currentForm && currentForm.id !== prevFormId) {
+        this.handleEvolutionTriggered(currentForm);
+      }
+
+      this.refreshAllPanelsUI();
+      void this.persistSaveState();
+    }
   }
 
   private handleMiniGameComplete(result: MiniGameResult): void {
@@ -732,14 +1118,12 @@ class DesktopPetRendererApp {
       );
     }
 
-    this.refreshHudUI();
+    this.refreshAllPanelsUI();
     void this.persistSaveState();
   }
 
   private handleEvolutionTriggered(newForm: SpeciesFormDefinition): void {
-    const settings = this.engine.getSaveData().settings;
-    this.petActor.setScales(newForm.scale, settings.petScale);
-    this.petActor.setWalkSpeed(newForm.walkSpeed);
+    this.syncActorWithCurrentForm();
 
     this.animator.setState('evolve', 2800);
     this.animator.spawnParticles('sparkle', this.petActor.x, this.petActor.y, 10);
@@ -747,16 +1131,113 @@ class DesktopPetRendererApp {
 
     const msg = `Évolution en ${newForm.name} ! ✨`;
     this.showSpeechBubble(msg, 5000);
+    const settings = this.engine.getSaveData().settings;
     if (settings.notificationsEnabled) {
       void window.petAPI?.notifyCriticalNeed('Évolution ! ✨', msg);
     }
 
-    this.refreshHudUI();
-    this.refreshStatsAndCompendiumUI();
+    this.refreshAllPanelsUI();
+    void this.persistSaveState();
+  }
+
+  private syncActorWithCurrentForm(): void {
+    const species = this.engine.getCurrentSpeciesForm();
+    const settings = this.engine.getSaveData().settings;
+    this.petActor.setScales(species?.scale ?? 1, settings.petScale);
+    this.petActor.setWalkSpeed(species?.walkSpeed ?? 0);
+  }
+
+  private applySandboxForm(formId: FormId, customSpeech?: string): void {
+    if (this.isSpongeMode) {
+      this.stopSpongeMode();
+    }
+    this.engine.forceSetForm(formId, Date.now());
+    const species = this.engine.getCurrentSpeciesForm();
+    this.syncActorWithCurrentForm();
+    this.petActor.stopWalking();
+
+    if (formId === 'egg') {
+      this.animator.forceState('idle');
+      this.animator.triggerEggShake(350);
+      this.animator.spawnParticles('sparkle', this.petActor.x, this.petActor.y, 6);
+    } else {
+      this.animator.setState('evolve', 1800);
+      this.animator.spawnParticles('sparkle', this.petActor.x, this.petActor.y, 8);
+      this.animator.spawnParticles('star', this.petActor.x, this.petActor.y, 5);
+    }
+
+    this.showSpeechBubble(
+      customSpeech ?? `Transformation en ${species?.name ?? formId} ! ⚡`,
+      3600
+    );
+    this.refreshAllPanelsUI();
+    void this.persistSaveState();
+  }
+
+  private runSandboxSimulation(type: SandboxConditionType, speechMsg: string): void {
+    // Si le pet est encore un œuf et qu'on simule un besoin de familier, on le fait éclore en starter
+    const currentPet = this.engine.getState();
+    if (
+      currentPet.stage === 'egg' &&
+      type !== 'boost_marathon' &&
+      type !== 'full_restore'
+    ) {
+      this.engine.forceSetForm('baby_aqua', Date.now());
+      this.syncActorWithCurrentForm();
+    }
+
+    this.engine.simulateCondition(type, Date.now());
+    this.petActor.stopWalking();
+
+    if (type === 'dirty') {
+      this.animator.forceState('sad');
+      this.startSpongeMode();
+    } else if (type === 'hungry') {
+      if (this.isSpongeMode) {
+        this.stopSpongeMode();
+      }
+      this.animator.forceState('hungry');
+    } else if (type === 'need_cuddle') {
+      if (this.isSpongeMode) {
+        this.stopSpongeMode();
+      }
+      this.animator.forceState('need_cuddle');
+    } else if (type === 'need_play') {
+      if (this.isSpongeMode) {
+        this.stopSpongeMode();
+      }
+      this.animator.forceState('need_play');
+    } else if (type === 'tired') {
+      if (this.isSpongeMode) {
+        this.stopSpongeMode();
+      }
+      this.animator.forceState('sad');
+    } else if (type === 'full_restore') {
+      if (this.isSpongeMode) {
+        this.stopSpongeMode();
+      }
+      this.animator.setState('happy', 1500);
+      this.animator.spawnParticles('sparkle', this.petActor.x, this.petActor.y, 8);
+      this.animator.spawnParticles('heart', this.petActor.x, this.petActor.y, 5);
+    } else if (type === 'boost_marathon') {
+      this.animator.spawnParticles('star', this.petActor.x, this.petActor.y, 8);
+      const evo = this.engine.checkEvolution();
+      if (evo.evolved && evo.newForm) {
+        this.handleEvolutionTriggered(evo.newForm);
+        return;
+      }
+    }
+
+    this.showSpeechBubble(speechMsg, 3800);
+    this.refreshAllPanelsUI();
     void this.persistSaveState();
   }
 
   private async handleResetPet(): Promise<void> {
+    if (this.isSpongeMode) {
+      this.stopSpongeMode();
+    }
+
     const inputEl = document.getElementById('input-pet-name') as HTMLInputElement | null;
     const customName = inputEl?.value.trim() || 'Mochi';
 
@@ -772,18 +1253,18 @@ class DesktopPetRendererApp {
       this.engine.reset(customName, Date.now());
     }
 
-    const species = this.engine.getCurrentSpeciesForm();
-    const settings = this.engine.getSaveData().settings;
-    this.petActor.setScales(species?.scale ?? 1, settings.petScale);
-    this.petActor.setWalkSpeed(species?.walkSpeed ?? 0);
+    this.syncActorWithCurrentForm();
     this.petActor.centerOnScreen();
 
-    this.animator.setState('evolve', 1800);
+    this.animator.forceState('idle');
+    this.animator.triggerEggShake(350);
     this.animator.spawnParticles('sparkle', this.petActor.x, this.petActor.y, 8);
-    this.showSpeechBubble(`Un nouvel œuf (${customName}) vient d'apparaître ! 🥚✨`, 4000);
+    this.showSpeechBubble(
+      `🥚 Nouvel œuf (${customName}) ! Cliquez 5 fois dessus pour le faire éclore !`,
+      4200
+    );
 
-    this.refreshHudUI();
-    this.refreshStatsAndCompendiumUI();
+    this.refreshAllPanelsUI();
   }
 
   private renderFoodsDrawerList(): void {
@@ -832,6 +1313,129 @@ class DesktopPetRendererApp {
     }
   }
 
+  /**
+   * Construit dans `#sandbox-lineages-container` la grille interactive des 19 formes
+   * classées par lignée (Œuf + Lignée Aquatique + Lignée Sylvestre + Lignée Astrale).
+   */
+  private renderSandboxLineagesGrid(): void {
+    const container = document.getElementById('sandbox-lineages-container');
+    if (!container) {
+      return;
+    }
+    container.innerHTML = '';
+
+    const speciesList = this.engine.getSpecies();
+    const currentFormId = this.engine.getState().formId;
+
+    const groups: Array<{ title: string; forms: SpeciesFormDefinition[] }> = [
+      {
+        title: '🥚 Stade Initial (Œuf)',
+        forms: speciesList.filter((s) => s.id === 'egg'),
+      },
+      {
+        title: '💧 Lignée Aquatique (Eau — 6 formes)',
+        forms: speciesList.filter((s) => s.lineage === 'aqua'),
+      },
+      {
+        title: '🌱 Lignée Sylvestre (Plante — 6 formes)',
+        forms: speciesList.filter((s) => s.lineage === 'flora'),
+      },
+      {
+        title: '🔥 Lignée Astrale (Feu / Cosmique — 6 formes)',
+        forms: speciesList.filter((s) => s.lineage === 'ember'),
+      },
+    ];
+
+    for (const grp of groups) {
+      const groupDiv = document.createElement('div');
+      groupDiv.className = 'lineage-group';
+
+      const titleEl = document.createElement('div');
+      titleEl.className = 'lineage-group-title';
+      titleEl.textContent = grp.title;
+      groupDiv.appendChild(titleEl);
+
+      const gridDiv = document.createElement('div');
+      gridDiv.className = 'lineage-forms-grid';
+
+      for (const form of grp.forms) {
+        const card = document.createElement('div');
+        card.className = `sandbox-form-card${form.id === currentFormId ? ' active-form' : ''}`;
+        card.dataset.formId = form.id;
+
+        const leftDiv = document.createElement('div');
+        leftDiv.className = 'sandbox-form-left';
+
+        const thumbCanvas = document.createElement('canvas');
+        thumbCanvas.width = 34;
+        thumbCanvas.height = 34;
+        thumbCanvas.className = 'sandbox-thumb-canvas';
+        this.animator.drawFormThumbnail(thumbCanvas, form.id);
+
+        const metaDiv = document.createElement('div');
+        metaDiv.className = 'sandbox-form-meta';
+        metaDiv.innerHTML = `
+          <span class="sandbox-form-name">${form.name}</span>
+          <span class="sandbox-form-stage">${STAGE_LABELS[form.stage] ?? form.stage}</span>
+        `;
+
+        leftDiv.appendChild(thumbCanvas);
+        leftDiv.appendChild(metaDiv);
+
+        const actionBtn = document.createElement('button');
+        actionBtn.type = 'button';
+        actionBtn.className = 'sandbox-transform-btn';
+        actionBtn.textContent = form.id === currentFormId ? 'Actuel ✓' : 'Choisir ⚡';
+        actionBtn.addEventListener('click', () => {
+          this.applySandboxForm(form.id);
+        });
+
+        card.appendChild(leftDiv);
+        card.appendChild(actionBtn);
+        gridDiv.appendChild(card);
+      }
+
+      groupDiv.appendChild(gridDiv);
+      container.appendChild(groupDiv);
+    }
+  }
+
+  private refreshAllPanelsUI(): void {
+    this.refreshHudUI();
+    this.refreshStatsAndCompendiumUI();
+    this.refreshSandboxMetricsUI();
+    this.renderSandboxLineagesGrid();
+  }
+
+  private getTotalCareActions(pet: PetState): number {
+    return (
+      (pet.careStats.totalMeals ?? 0) +
+      (pet.careStats.totalGamesPlayed ?? 0) +
+      (pet.careStats.totalPets ?? 0) +
+      (pet.careStats.totalCleans ?? 0)
+    );
+  }
+
+  private refreshSandboxMetricsUI(): void {
+    const pet = this.engine.getState();
+    const reqEgg = this.engine.getConfig().eggClicksRequired || 5;
+    const totalCare = this.getTotalCareActions(pet);
+
+    const setText = (id: string, text: string) => {
+      const el = document.getElementById(id);
+      if (el) {
+        el.textContent = text;
+      }
+    };
+
+    setText('sb-pc-clicks', (pet.careStats.pcMouseClicks ?? 0).toLocaleString('fr-FR'));
+    setText('sb-pc-keys', (pet.careStats.pcKeyPresses ?? 0).toLocaleString('fr-FR'));
+    setText('sb-pc-active', this.formatAge(pet.careStats.pcActiveSeconds ?? 0));
+    setText('sb-care-total', String(totalCare));
+    setText('sb-egg-clicks', `${pet.careStats.eggClicks ?? 0} / ${reqEgg}`);
+    setText('sb-pet-age', this.formatAge(pet.ageSeconds));
+  }
+
   private refreshHudUI(): void {
     const pet = this.engine.getState();
     const species = this.engine.getCurrentSpeciesForm();
@@ -869,6 +1473,22 @@ class DesktopPetRendererApp {
       } else {
         poopBadgeEl.classList.add('hidden');
       }
+    }
+
+    const marathonInputsEl = document.getElementById('hud-marathon-inputs');
+    if (marathonInputsEl) {
+      const clicks = (pet.careStats.pcMouseClicks ?? 0).toLocaleString('fr-FR');
+      const keys = (pet.careStats.pcKeyPresses ?? 0).toLocaleString('fr-FR');
+      marathonInputsEl.textContent = `⌨️ PC : ${clicks} clics • ${keys} touches`;
+    }
+
+    const marathonCareEl = document.getElementById('hud-marathon-care');
+    if (marathonCareEl) {
+      marathonCareEl.textContent = `🫧 Soins : ${this.getTotalCareActions(pet)}`;
+    }
+
+    if (this.isSpongeMode) {
+      this.updateSpongeBannerUI();
     }
 
     this.updateFpsBadgeUI();
@@ -933,13 +1553,37 @@ class DesktopPetRendererApp {
     this.hitTester.refresh();
   }
 
+  private toggleSandboxModal(): void {
+    if (!this.sandboxModalEl) {
+      return;
+    }
+    if (this.sandboxModalEl.classList.contains('hidden')) {
+      this.openSandboxModal();
+    } else {
+      this.sandboxModalEl.classList.add('hidden');
+      this.hitTester.refresh();
+    }
+  }
+
+  private openSandboxModal(): void {
+    this.hideHudPanel();
+    this.statsModalEl?.classList.add('hidden');
+    this.refreshSandboxMetricsUI();
+    this.renderSandboxLineagesGrid();
+    this.sandboxModalEl?.classList.remove('hidden');
+    this.hitTester.refresh();
+  }
+
   private closeAllPanels(): void {
     this.hideHudPanel();
     this.statsModalEl?.classList.add('hidden');
+    this.sandboxModalEl?.classList.add('hidden');
     this.hitTester.refresh();
   }
 
   private openStatsModal(initialTabId: string): void {
+    this.hideHudPanel();
+    this.sandboxModalEl?.classList.add('hidden');
     this.refreshStatsAndCompendiumUI();
     this.syncSettingsControls();
     this.switchModalTab(initialTabId);
@@ -965,6 +1609,7 @@ class DesktopPetRendererApp {
     const pet = this.engine.getState();
     const speciesList = this.engine.getSpecies();
     const currentSpecies = this.engine.getCurrentSpeciesForm();
+    const totalCare = this.getTotalCareActions(pet);
 
     const setText = (id: string, text: string) => {
       const el = document.getElementById(id);
@@ -983,7 +1628,17 @@ class DesktopPetRendererApp {
     );
     setText(
       'stat-care-actions',
-      `${pet.careStats.totalPets} 🤗 • ${pet.careStats.totalCleans} 🧹`
+      `${pet.careStats.totalPets} 🤗 • ${pet.careStats.totalCleans} 🧽`
+    );
+    setText(
+      'stat-pc-inputs',
+      `${(pet.careStats.pcMouseClicks ?? 0).toLocaleString('fr-FR')} 🖱️ • ${(
+        pet.careStats.pcKeyPresses ?? 0
+      ).toLocaleString('fr-FR')} ⌨️`
+    );
+    setText(
+      'stat-pc-time-care',
+      `${this.formatAge(pet.careStats.pcActiveSeconds ?? 0)} • ${totalCare} soins`
     );
     setText('stat-mistakes', String(pet.careStats.careMistakes));
     setText(
@@ -996,7 +1651,7 @@ class DesktopPetRendererApp {
     setText('stat-cat-snack', String(pet.careStats.foodCategoryCounts.snack));
     setText('stat-cat-gourmet', String(pet.careStats.foodCategoryCounts.gourmet));
 
-    // Rendu de la galerie Compendium (7 formes)
+    // Rendu de la galerie Compendium (19 formes)
     const compendiumGrid = document.getElementById('compendium-grid');
     if (!compendiumGrid) {
       return;
@@ -1041,7 +1696,7 @@ class DesktopPetRendererApp {
           ${
             isDiscovered
               ? form.description
-              : 'Continuez à prendre soin de votre familier pour découvrir cette forme.'
+              : 'Continuez à prendre soin de votre familier (ou utilisez le Labo) pour découvrir cette forme.'
           }
         </div>
         <div class="compendium-condition">Condition : ${conditionDesc}</div>
@@ -1065,10 +1720,19 @@ class DesktopPetRendererApp {
       for (const branch of parentForm.evolutions) {
         if (branch.targetFormId === targetFormId) {
           const c = branch.condition;
-          const parts: string[] = [
-            `Depuis ${parentForm.name}`,
-            `Âge ≥ ${Math.round(c.minAgeSeconds / 60)} min`,
-          ];
+          const parts: string[] = [`Depuis ${parentForm.name}`];
+          if (typeof c.minEggClicks === 'number') {
+            parts.push(`${c.minEggClicks} clics sur l'œuf`);
+          }
+          if (c.minAgeSeconds > 0) {
+            parts.push(`Âge ≥ ${Math.round(c.minAgeSeconds / 3600)} h`);
+          }
+          if (typeof c.minPcInputs === 'number') {
+            parts.push(`≥ ${c.minPcInputs.toLocaleString('fr-FR')} entrées PC`);
+          }
+          if (typeof c.minCareActions === 'number') {
+            parts.push(`≥ ${c.minCareActions} soins`);
+          }
           if (typeof c.maxCareMistakes === 'number') {
             parts.push(`≤ ${c.maxCareMistakes} erreur(s)`);
           }
@@ -1080,6 +1744,12 @@ class DesktopPetRendererApp {
           }
           if (c.preferredFoodCategory) {
             parts.push(`Repas favori : ${FOOD_CATEGORY_LABELS[c.preferredFoodCategory]}`);
+          } else if (c.allowedCategories && c.allowedCategories.length > 0) {
+            parts.push(
+              `Repas : ${c.allowedCategories
+                .map((cat) => FOOD_CATEGORY_LABELS[cat])
+                .join(' / ')}`
+            );
           }
           return parts.join(' • ');
         }
@@ -1187,7 +1857,7 @@ class DesktopPetRendererApp {
   }
 
   /**
-   * Positionne dynamiquement la bulle de dialogue et le panneau HUD au-dessus du familier.
+   * Positionne dynamiquement la bulle de dialogue, la jauge d'éponge et le panneau HUD au-dessus du familier.
    */
   private updateFloatingPanelsPosition(): void {
     if (!this.petActor) {
@@ -1195,19 +1865,34 @@ class DesktopPetRendererApp {
     }
     const petHalf = this.petActor.getDrawSize() / 2;
 
+    if (this.spongeBannerEl && !this.spongeBannerEl.classList.contains('hidden')) {
+      const bannerX = Math.min(
+        window.innerWidth - 165,
+        Math.max(165, Math.round(this.petActor.x))
+      );
+      const bannerY = Math.max(54, Math.round(this.petActor.y - petHalf - 16));
+      this.spongeBannerEl.style.left = `${bannerX}px`;
+      this.spongeBannerEl.style.top = `${bannerY}px`;
+    }
+
     if (this.speechBubbleEl && !this.speechBubbleEl.classList.contains('hidden')) {
       const bubbleX = Math.min(
-        window.innerWidth - 110,
-        Math.max(110, Math.round(this.petActor.x))
+        window.innerWidth - 120,
+        Math.max(120, Math.round(this.petActor.x))
       );
-      const bubbleY = Math.max(44, Math.round(this.petActor.y - petHalf - 14));
+      const spongeOffset =
+        this.spongeBannerEl && !this.spongeBannerEl.classList.contains('hidden') ? 58 : 0;
+      const bubbleY = Math.max(
+        44,
+        Math.round(this.petActor.y - petHalf - 46 - spongeOffset)
+      );
       this.speechBubbleEl.style.left = `${bubbleX}px`;
       this.speechBubbleEl.style.top = `${bubbleY}px`;
     }
 
     if (this.hudEl && !this.hudEl.classList.contains('hidden')) {
-      const hudWidth = this.hudEl.offsetWidth || 320;
-      const hudHeight = this.hudEl.offsetHeight || 220;
+      const hudWidth = this.hudEl.offsetWidth || 332;
+      const hudHeight = this.hudEl.offsetHeight || 250;
 
       const left = Math.min(
         window.innerWidth - hudWidth - 16,

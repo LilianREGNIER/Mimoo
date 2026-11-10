@@ -14,12 +14,27 @@
     <link rel="stylesheet" href="./styles.css" />
   </head>
   <body>
-    <!-- Canvas 2D plein écran pour le familier, son ombre, les salissures, les particules et Attrape-Étoile -->
+    <!-- Canvas 2D plein écran pour le familier, son ombre, les salissures, l'éponge, les particules et Attrape-Étoile -->
     <canvas id="pet-canvas"></canvas>
 
     <!-- Bulle de dialogue / Toast discret au-dessus du familier -->
     <div id="pet-speech-bubble" class="speech-bubble hidden" aria-live="polite">
       <span id="pet-speech-text">Bonjour ! ✨</span>
+    </div>
+
+    <!-- Jauge flottante du Mode Éponge / Brosse au-dessus du familier -->
+    <div id="sponge-banner" class="sponge-banner ui-interactive hidden" aria-live="polite">
+      <div class="sponge-banner-top">
+        <span id="sponge-banner-text" class="sponge-banner-text">
+          🧽 Passez l'éponge sur Mochi ! (0%)
+        </span>
+        <button id="btn-cancel-sponge" class="sponge-cancel-btn" title="Quitter le mode éponge">
+          Annuler
+        </button>
+      </div>
+      <div class="sponge-progress-track">
+        <div id="sponge-progress-fill" class="sponge-progress-fill" style="width: 0%"></div>
+      </div>
     </div>
 
     <!-- Bandeau flottant du mini-jeu Attrape-Étoile (affiché uniquement pendant star_catch) -->
@@ -36,7 +51,7 @@
     <section
       id="pet-hud"
       class="glass-panel hud-panel ui-interactive hidden"
-       aria-label="Menu du familier"
+      aria-label="Menu du familier"
     >
       <header class="hud-header">
         <div class="hud-identity">
@@ -94,6 +109,12 @@
         </div>
       </div>
 
+      <!-- Bandeau compact Suivi Marathon & Activité PC -->
+      <div class="hud-marathon-bar" title="Suivi Marathon : Activité PC et soins cumulés">
+        <span id="hud-marathon-inputs">⌨️ PC : 0 clics • 0 touches</span>
+        <span id="hud-marathon-care">🫧 Soins : 0</span>
+      </div>
+
       <!-- Tiroir secondaire : Choix d'un aliment (5 aliments de foods.json) -->
       <div id="drawer-foods" class="hud-drawer hidden">
         <div class="drawer-header">
@@ -127,7 +148,7 @@
         </div>
       </div>
 
-      <!-- Barre des 6 boutons d'action -->
+      <!-- Barre des boutons d'action + bouton Test / Labo -->
       <div class="hud-actions-grid">
         <button id="btn-action-feed" class="action-btn" title="Nourrir le familier">
           <span class="action-emoji">🍎</span>
@@ -145,14 +166,22 @@
           <span id="icon-action-sleep" class="action-emoji">💤</span>
           <span id="label-action-sleep" class="action-label">Dormir</span>
         </button>
-        <button id="btn-action-clean" class="action-btn" title="Nettoyer l'espace">
-          <span class="action-emoji">🧹</span>
+        <button id="btn-action-clean" class="action-btn" title="Activer l'éponge pour nettoyer le familier">
+          <span class="action-emoji">🧽</span>
           <span class="action-label">Nettoyer</span>
           <span id="badge-poop-count" class="action-Counter hidden">0</span>
         </button>
         <button id="btn-action-stats" class="action-btn" title="Statistiques, Compendium & Réglages">
           <span class="action-emoji">📊</span>
           <span class="action-label">Stats & Régl.</span>
+        </button>
+        <button
+          id="btn-action-sandbox"
+          class="action-btn action-btn-sandbox"
+          title="Ouvrir le Menu Spécial Test & Sandbox (F2)"
+        >
+          <span class="action-emoji">🧪</span>
+          <span class="action-label">Test / Labo (F2)</span>
         </button>
       </div>
     </section>
@@ -213,7 +242,7 @@
       <header class="modal-header">
         <div class="modal-title-group">
           <h2 class="modal-title">📊 Journal & Réglages</h2>
-          <span id="stats-subtitle" class="modal-subtitle">Suivi d'élevage & Encyclopédie</span>
+          <span id="stats-subtitle" class="modal-subtitle">Suivi d'élevage & Encyclopédie (19 formes)</span>
         </div>
         <button id="btn-close-stats" class="icon-close-btn" title="Fermer">✕</button>
       </header>
@@ -221,7 +250,9 @@
       <!-- Onglets de navigation -->
       <nav class="modal-tabs" role="tablist">
         <button class="tab-btn active" data-tab="tab-stats" role="tab">📈 Statistiques</button>
-        <button class="tab-btn" data-tab="tab-compendium" role="tab">📖 Compendium (7)</button>
+        <button id="tab-btn-compendium" class="tab-btn" data-tab="tab-compendium" role="tab">
+          📖 Compendium (19)
+        </button>
         <button class="tab-btn" data-tab="tab-settings" role="tab">⚙️ Réglages</button>
       </nav>
 
@@ -250,7 +281,15 @@
           </div>
           <div class="stat-box">
             <span class="stat-label">Câlins & Nettoyages</span>
-            <strong id="stat-care-actions" class="stat-value">0 🤗 • 0 🧹</strong>
+            <strong id="stat-care-actions" class="stat-value">0 🤗 • 0 🧽</strong>
+          </div>
+          <div class="stat-box">
+            <span class="stat-label">Activité PC (Clics / Touches)</span>
+            <strong id="stat-pc-inputs" class="stat-value">0 🖱️ • 0 ⌨️</strong>
+          </div>
+          <div class="stat-box">
+            <span class="stat-label">Temps actif PC & Total Soins</span>
+            <strong id="stat-pc-time-care" class="stat-value">0 min • 0 soins</strong>
           </div>
           <div class="stat-box">
             <span class="stat-label">Erreurs de soin</span>
@@ -258,7 +297,7 @@
           </div>
           <div class="stat-box">
             <span class="stat-label">Formes découvertes</span>
-            <strong id="stat-discovered" class="stat-value">1 / 7</strong>
+            <strong id="stat-discovered" class="stat-value">1 / 19</strong>
           </div>
         </div>
 
@@ -273,7 +312,7 @@
         </div>
       </div>
 
-      <!-- Contenu Onglet 2 : Galerie d'évolution (Compendium) -->
+      <!-- Contenu Onglet 2 : Galerie d'évolution (Compendium 19 formes) -->
       <div id="tab-compendium" class="tab-content hidden">
         <div id="compendium-grid" class="compendium-grid"></div>
       </div>
@@ -346,6 +385,123 @@
               <button type="button" id="btn-reset-pet" class="btn-danger">Nouvel Œuf 🥚</button>
             </div>
           </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Fenêtre Menu Spécial Test & Sandbox (#sandbox-modal) -->
+    <section
+      id="sandbox-modal"
+      class="glass-panel sandbox-modal-panel ui-interactive hidden"
+      aria-label="Menu Spécial Test et Sandbox"
+    >
+      <header class="modal-header">
+        <div class="modal-title-group">
+          <h2 class="modal-title">🧪 Menu Spécial Test & Sandbox</h2>
+          <span class="modal-subtitle">
+            Testez l'éclosion, l'éponge, les animations de besoins et les 19 formes en 1 clic
+          </span>
+        </div>
+        <button id="btn-close-sandbox" class="icon-close-btn" title="Fermer (Échap / F2)">✕</button>
+      </header>
+
+      <div class="sandbox-body">
+        <!-- 4) Suivi Marathon & Activité PC en temps réel -->
+        <div class="sandbox-section">
+          <h3 class="sandbox-section-title">⏱️ Suivi Marathon & Activité PC en temps réel</h3>
+          <div class="sandbox-metrics-grid">
+            <div class="sandbox-metric-pill">
+              <span class="metric-label">🖱️ Clics souris PC</span>
+              <strong id="sb-pc-clicks">0</strong>
+            </div>
+            <div class="sandbox-metric-pill">
+              <span class="metric-label">⌨️ Touches clavier PC</span>
+              <strong id="sb-pc-keys">0</strong>
+            </div>
+            <div class="sandbox-metric-pill">
+              <span class="metric-label">⚡ Temps actif PC</span>
+              <strong id="sb-pc-active">0 s</strong>
+            </div>
+            <div class="sandbox-metric-pill">
+              <span class="metric-label">🫧 Actions de soin</span>
+              <strong id="sb-care-total">0</strong>
+            </div>
+            <div class="sandbox-metric-pill">
+              <span class="metric-label">🥚 Clics sur l'œuf</span>
+              <strong id="sb-egg-clicks">0 / 5</strong>
+            </div>
+            <div class="sandbox-metric-pill">
+              <span class="metric-label">⏳ Âge cumulé</span>
+              <strong id="sb-pet-age">0 s</strong>
+            </div>
+          </div>
+        </div>
+
+        <!-- 1) Recommencer / Choisir un Starter -->
+        <div class="sandbox-section">
+          <h3 class="sandbox-section-title">1) Recommencer / Choisir un Starter</h3>
+          <div class="sandbox-buttons-grid">
+            <button type="button" id="btn-sb-starter-egg" class="sandbox-btn">
+              🥚 Nouvel Œuf (0/5 clics)
+            </button>
+            <button type="button" id="btn-sb-starter-aqua" class="sandbox-btn lineage-aqua">
+              💧 Starter Eau : P'tit Goutte
+            </button>
+            <button type="button" id="btn-sb-starter-flora" class="sandbox-btn lineage-flora">
+              🌱 Starter Plante : P'tit Bourgeon
+            </button>
+            <button type="button" id="btn-sb-starter-ember" class="sandbox-btn lineage-ember">
+              🔥 Starter Feu : P'tite Braise
+            </button>
+            <button type="button" id="btn-sb-starter-random" class="sandbox-btn sandbox-btn-accent">
+              🎲 Éclosion Starter Aléatoire immédiate
+            </button>
+          </div>
+        </div>
+
+        <!-- 3) Simuler les Besoins & Animations à la demande -->
+        <div class="sandbox-section">
+          <h3 class="sandbox-section-title">2) Simuler les Besoins & Animations à la demande</h3>
+          <div class="sandbox-buttons-grid">
+            <button type="button" id="btn-sb-sim-hungry" class="sandbox-btn">
+              🍖 Simuler Faim
+            </button>
+            <button type="button" id="btn-sb-sim-dirty" class="sandbox-btn">
+              🧽 Simuler Saleté (+ activer besoin d'éponge)
+            </button>
+            <button type="button" id="btn-sb-sim-cuddle" class="sandbox-btn">
+              🤗 Simuler Besoin de Câlin
+            </button>
+            <button type="button" id="btn-sb-sim-play" class="sandbox-btn">
+              🎾 Simuler Besoin de Jouer
+            </button>
+            <button type="button" id="btn-sb-sim-tired" class="sandbox-btn">
+              💤 Simuler Fatigue
+            </button>
+            <button type="button" id="btn-sb-sim-marathon" class="sandbox-btn sandbox-btn-accent">
+              ⌨️ Boost Marathon (+15 000 clics/touches PC & +40h)
+            </button>
+            <button type="button" id="btn-sb-sim-restore" class="sandbox-btn sandbox-btn-success">
+              ✨ Tout restaurer à 100%
+            </button>
+          </div>
+        </div>
+
+        <!-- 2) Évoluer librement vers n'importe quelle forme (les 19 formes) -->
+        <div class="sandbox-section">
+          <div class="sandbox-section-header-row">
+            <h3 class="sandbox-section-title">
+              3) Évoluer librement vers n'importe quelle forme (les 19 formes)
+            </h3>
+            <button
+              type="button"
+              id="btn-sb-force-evolve"
+              class="sandbox-btn sandbox-btn-evolve-next"
+            >
+              ⚡ Forcer l'évolution suivante de la lignée actuelle
+            </button>
+          </div>
+          <div id="sandbox-lineages-container" class="sandbox-lineages-container"></div>
         </div>
       </div>
     </section>

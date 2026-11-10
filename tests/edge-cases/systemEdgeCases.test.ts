@@ -7,6 +7,7 @@ import { PetEngine } from '../../src/core/petEngine';
 import {
   createInitialPetState,
   createInitialSaveData,
+  LEGACY_FORM_MIGRATION,
   parseSaveDataJson,
   validateAndMigrateSaveData,
 } from '../../src/core/saveSystem';
@@ -28,21 +29,26 @@ function createActivePet(nowMs = 1_700_000_000_000): PetState {
   const base = createInitialPetState('Mochi', nowMs);
   return {
     ...base,
-    formId: 'child_sprout',
+    formId: 'child_flora',
     stage: 'child',
+    lineage: 'flora',
     ageSeconds: 400,
-    discoveredForms: ['egg', 'baby_blob', 'child_sprout'],
+    discoveredForms: ['egg', 'baby_flora', 'child_flora'],
     needs: {
       hunger: 85,
       energy: 90,
       happiness: 85,
       cleanliness: 95,
     },
+    careStats: {
+      ...base.careStats,
+      eggClicks: 5,
+    },
   };
 }
 
 describe('Cas limites système & QA (systemEdgeCases)', () => {
-  describe('Cas limite 1 : Fermeture prolongée / Nuit complète (12h et 48h)', () => {
+  describe('Cas limite 1 : Fermeture prolongée / Nuit complète (12h, 48h, 96h) et protection de l’œuf', () => {
     it('maintient tous les besoins au-dessus ou égaux au plancher offlineFloor (15) après 12h hors-ligne', () => {
       const startMs = 1_700_000_000_000;
       const pet = createActivePet(startMs);
@@ -90,6 +96,18 @@ describe('Cas limites système & QA (systemEdgeCases)', () => {
       expect(report.elapsedMs).toBe(96 * HOUR_MS);
       expect(report.clampedMs).toBe(gameConfig.maxOfflineHours * HOUR_MS);
       expect(updated.ageSeconds).toBe(400 + gameConfig.maxOfflineHours * 3600);
+    });
+
+    it('n’altère ni les jauges ni le stade d’un œuf fermé pendant 24h (pas d’éclosion hors-ligne sans clics)', () => {
+      const startMs = 1_700_000_000_000;
+      const save = createInitialSaveData('Mochi', startMs);
+      const engine = new PetEngine(save, gameConfig, foods, species);
+
+      const { pet: after24h, evolved } = engine.applyOfflineCatchup(startMs + 24 * HOUR_MS);
+      expect(evolved).toBe(false);
+      expect(after24h.formId).toBe('egg');
+      expect(after24h.stage).toBe('egg');
+      expect(after24h.needs).toEqual(save.pet.needs);
     });
   });
 
@@ -173,7 +191,7 @@ describe('Cas limites système & QA (systemEdgeCases)', () => {
     });
   });
 
-  describe('Cas limite 4 : Fichier de sauvegarde corrompu ou ancienne version', () => {
+  describe('Cas limite 4 : Fichier de sauvegarde corrompu, ancienne version et migration LEGACY_FORM_MIGRATION', () => {
     it('récupère automatiquement sans exception sur une chaîne JSON tronquée, vide ou "null"', () => {
       const corruptedInputs = ['{not valid json', '', '   ', 'null', '[]', '42'];
 
@@ -185,11 +203,12 @@ describe('Cas limites système & QA (systemEdgeCases)', () => {
         expect(result.saveData.schemaVersion).toBe(1);
         expect(result.saveData.pet.formId).toBe('egg');
         expect(result.saveData.pet.stage).toBe('egg');
+        expect(result.saveData.pet.lineage).toBe('none');
         expect(result.warnings.length).toBeGreaterThan(0);
       }
     });
 
-    it('migre proprement une sauvegarde ancienne (schemaVersion: 0) et assainit les jauges hors bornes (-50, 999)', () => {
+    it('migre proprement une sauvegarde ancienne (schemaVersion: 0), assainit les jauges hors bornes (-50, 999) et migre baby_blob -> baby_aqua', () => {
       const legacyRawSave = {
         schemaVersion: 0,
         savedAt: 1_690_000_000_000,
@@ -222,8 +241,9 @@ describe('Cas limites système & QA (systemEdgeCases)', () => {
       expect(result.migrated).toBe(true);
       expect(result.saveData.schemaVersion).toBe(1);
       expect(result.saveData.pet.name).toBe('Kumo');
-      expect(result.saveData.pet.formId).toBe('baby_blob');
+      expect(result.saveData.pet.formId).toBe('baby_aqua');
       expect(result.saveData.pet.stage).toBe('baby');
+      expect(result.saveData.pet.lineage).toBe('aqua');
 
       // Jauges assainies dans [0, 100]
       expect(result.saveData.pet.needs.hunger).toBe(0);
@@ -233,8 +253,88 @@ describe('Cas limites système & QA (systemEdgeCases)', () => {
 
       expect(result.saveData.pet.poopCount).toBe(0);
       expect(result.saveData.pet.discoveredForms).toContain('egg');
-      expect(result.saveData.pet.discoveredForms).toContain('baby_blob');
+      expect(result.saveData.pet.discoveredForms).toContain('baby_aqua');
       expect(result.saveData.settings.petScale).toBe(1);
+    });
+
+    it('migre automatiquement tous les anciens identifiants de formes (baby_blob, child_sprout, adult_solar, etc.) vers les nouvelles lignées', () => {
+      const legacyCases = [
+        {
+          oldId: 'baby_blob',
+          expectedForm: 'baby_aqua',
+          expectedStage: 'baby',
+          expectedLineage: 'aqua',
+        },
+        {
+          oldId: 'child_sprout',
+          expectedForm: 'child_flora',
+          expectedStage: 'child',
+          expectedLineage: 'flora',
+        },
+        {
+          oldId: 'adult_solar',
+          expectedForm: 'adult_ember_solar',
+          expectedStage: 'adult',
+          expectedLineage: 'ember',
+        },
+        {
+          oldId: 'adult_athletic',
+          expectedForm: 'adult_ember_comet',
+          expectedStage: 'adult',
+          expectedLineage: 'ember',
+        },
+        {
+          oldId: 'adult_gourmet',
+          expectedForm: 'adult_ember_magma',
+          expectedStage: 'adult',
+          expectedLineage: 'ember',
+        },
+        {
+          oldId: 'adult_shadow',
+          expectedForm: 'adult_ember_eclipse',
+          expectedStage: 'adult',
+          expectedLineage: 'ember',
+        },
+      ] as const;
+
+      for (const item of legacyCases) {
+        expect(LEGACY_FORM_MIGRATION[item.oldId]).toBe(item.expectedForm);
+
+        const raw = {
+          schemaVersion: 1,
+          savedAt: 1_700_000_000_000,
+          pet: {
+            name: 'Mochi',
+            formId: item.oldId,
+            bornAt: 1_700_000_000_000,
+            lastUpdatedAt: 1_700_000_000_000,
+            ageSeconds: 1000,
+            needs: { hunger: 80, energy: 80, happiness: 80, cleanliness: 80 },
+            isSleeping: false,
+            poopCount: 0,
+            lastPettedAt: 0,
+            discoveredForms: ['egg', 'baby_blob', 'child_sprout', 'adult_solar'],
+            position: { x: 200, y: 200 },
+            careStats: {},
+          },
+          settings: {},
+        };
+
+        const migrated = validateAndMigrateSaveData(raw, 1_700_000_000_000);
+        expect(migrated.migrated).toBe(true);
+        expect(migrated.recoveredFromCorruption).toBe(false);
+        expect(migrated.saveData.pet.formId).toBe(item.expectedForm);
+        expect(migrated.saveData.pet.stage).toBe(item.expectedStage);
+        expect(migrated.saveData.pet.lineage).toBe(item.expectedLineage);
+        expect(migrated.saveData.pet.discoveredForms).toEqual(
+          expect.arrayContaining([
+            'egg',
+            'baby_aqua',
+            'child_flora',
+            'adult_ember_solar',
+          ])
+        );
+      }
     });
   });
 

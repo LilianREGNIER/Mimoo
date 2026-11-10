@@ -11,6 +11,8 @@ export interface HitTestTargetProvider {
   petActor: PetActor;
   /** Teste si le curseur survole une étoile active du mini-jeu Attrape-Étoile. */
   isPointOverMiniGameStar: (clientX: number, clientY: number) => boolean;
+  /** Indique si le Mode Éponge / Brosse est actif (+90 px de zone interactive autour du pet). */
+  isSpongeModeActive?: () => boolean;
 }
 
 /**
@@ -42,7 +44,7 @@ export class HitTester {
 
   /**
    * Réévalue l'état d'interactivité à la dernière position connue du curseur
-   * (utile à l'ouverture ou à la fermeture d'un panneau UI).
+   * (utile à l'ouverture ou à la fermeture d'un panneau UI ou du mode éponge).
    */
   public refresh(): boolean {
     return this.evaluateAt(this.lastClientX, this.lastClientY);
@@ -67,15 +69,17 @@ export class HitTester {
   }
 
   private computeIsInteractive(clientX: number, clientY: number): boolean {
-    const { petActor, isPointOverMiniGameStar } = this.provider;
+    const { petActor, isPointOverMiniGameStar, isSpongeModeActive } = this.provider;
 
     // 1. Pendant un glisser-déposer du familier, la fenêtre reste toujours interactive
     if (petActor.isDragging) {
       return true;
     }
 
-    // 2. Rectangle de collision du familier avec une marge confortable (18 px)
-    if (petActor.containsPoint(clientX, clientY, 18)) {
+    // 2. Rectangle de collision du familier (élargi à +90 px en mode éponge, sinon 18 px)
+    const spongeActive = isSpongeModeActive?.() === true;
+    const hitMargin = spongeActive ? 90 : 18;
+    if (petActor.containsPoint(clientX, clientY, hitMargin)) {
       return true;
     }
 

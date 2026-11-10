@@ -1,6 +1,6 @@
 /**
  * Physique, IA de déplacement autonome sur le bureau et interactions souris
- * (Glisser-déposer, caresse au curseur, clic simple et regard vers la souris).
+ * (Glisser-déposer, caresse au curseur, brossage à l'éponge, clic simple et regard vers la souris).
  */
 
 import { SPRITE_FRAME_WIDTH } from './spriteAnimator';
@@ -13,10 +13,12 @@ export interface BoundingBox {
 }
 
 export interface PetActorCallbacks {
-  /** Déclenché lors d'un clic simple sur le familier (ouvre/ferme le HUD). */
+  /** Déclenché lors d'un clic simple sur le familier (éclosion de l'œuf ou ouverture/fermeture du HUD). */
   onClick: () => void;
   /** Déclenché lorsque l'utilisateur caresse le familier en frottant la souris dessus. */
   onPetRub: (x: number, y: number) => void;
+  /** Déclenché lorsque l'utilisateur frotte le familier avec l'éponge en mode nettoyage. */
+  onSpongeScrub?: (scrubDelta: number, cursorX: number, cursorY: number) => void;
   /** Déclenché à la fin d'un déplacement ou d'un glisser-déposer pour sauvegarder la position. */
   onPositionChanged: (x: number, y: number) => void;
 }
@@ -31,6 +33,9 @@ export class PetActor {
   public isMoving = false;
   public isDragging = false;
   public isHovering = false;
+  public isSpongeMode = false;
+  public lastCursorX = -1000;
+  public lastCursorY = -1000;
 
   private speciesScale = 1.0;
   private userScale = 1.0;
@@ -41,7 +46,7 @@ export class PetActor {
   private aiPauseTimer = 2.5;
   private vy = 0;
 
-  // Suivi souris (Drag & Drop + Caresse par frottement)
+  // Suivi souris (Drag & Drop + Caresse par frottement + Brossage Éponge)
   private pointerDown = false;
   private hasDragged = false;
   private dragStartClientX = 0;
@@ -53,6 +58,7 @@ export class PetActor {
   private rubDistanceAccumulator = 0;
   private lastRubDirection = 0;
   private lastRubTimestamp = 0;
+  private spongeDistanceAccumulator = 0;
 
   private readonly callbacks: PetActorCallbacks;
 
@@ -107,6 +113,15 @@ export class PetActor {
   }
 
   /**
+   * Interrompt immédiatement toute marche autonome en cours.
+   */
+  public stopWalking(): void {
+    this.targetX = null;
+    this.isMoving = false;
+    this.aiPauseTimer = 3.2;
+  }
+
+  /**
    * Retourne le rectangle de collision du familier (avec une marge optionnelle confortable).
    */
   public getHitBox(margin: number = 14): BoundingBox {
@@ -149,7 +164,7 @@ export class PetActor {
    * Ordonne au familier de marcher vers une coordonnée X (ex: pour attraper une étoile).
    */
   public walkToward(x: number): void {
-    if (this.walkSpeed <= 0 || this.isDragging) {
+    if (this.walkSpeed <= 0 || this.isDragging || this.isSpongeMode) {
       return;
     }
     this.targetX = this.clampX(x);
@@ -162,6 +177,15 @@ export class PetActor {
     if (button !== 0) {
       return false;
     }
+
+    if (this.isSpongeMode) {
+      if (this.containsPoint(clientX, clientY, 60)) {
+        this.callbacks.onSpongeScrub?.(14, clientX, clientY);
+        return true;
+      }
+      return false;
+    }
+
     if (!this.containsPoint(clientX, clientY, 12)) {
       return false;
     }
@@ -177,13 +201,36 @@ export class PetActor {
   }
 
   /**
-   * Gère le déplacement du curseur (Drag & Drop, survol et caresse par frottement).
+   * Gère le déplacement du curseur (Drag & Drop, survol, caresse par frottement et éponge).
    */
   public handlePointerMove(clientX: number, clientY: number): void {
     const dx = clientX - this.lastMouseX;
     const dy = clientY - this.lastMouseY;
     this.lastMouseX = clientX;
     this.lastMouseY = clientY;
+    this.lastCursorX = clientX;
+    this.lastCursorY = clientY;
+
+    // Mode Éponge / Brosse : simple passage en va-et-vient sur la zone du familier (sans clic requis)
+    if (this.isSpongeMode) {
+      this.isHovering = this.containsPoint(clientX, clientY, 90);
+      const onPetScrubZone = this.containsPoint(clientX, clientY, 55);
+      if (onPetScrubZone) {
+        const stepDist = Math.hypot(dx, dy);
+        if (stepDist > 1.2 && stepDist < 160) {
+          this.spongeDistanceAccumulator += stepDist;
+          if (this.spongeDistanceAccumulator >= 20) {
+            const scrubDelta = Math.max(
+              4,
+              Math.min(18, Math.round((this.spongeDistanceAccumulator / 20) * 5.5))
+            );
+            this.spongeDistanceAccumulator = 0;
+            this.callbacks.onSpongeScrub?.(scrubDelta, clientX, clientY);
+          }
+        }
+      }
+      return;
+    }
 
     if (this.pointerDown) {
       const distFromStart = Math.hypot(
@@ -288,7 +335,7 @@ export class PetActor {
 
     this.x = this.clampX(this.x);
 
-    if (!options.canWalk || this.walkSpeed <= 0) {
+    if (!options.canWalk || this.walkSpeed <= 0 || this.isSpongeMode) {
       this.isMoving = false;
       this.targetX = null;
       return;
