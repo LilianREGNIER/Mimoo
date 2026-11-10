@@ -1,0 +1,123 @@
+[
+  {
+    "id": "egg",
+    "name": "Œuf Étoilé",
+    "stage": "egg",
+    "description": "Un œuf tiède aux motifs célestes qui oscille doucement en attendant d'éclore.",
+    "spriteSheet": "sprites/egg.png",
+    "scale": 1.0,
+    "walkSpeed": 0,
+    "evolutions": [
+      {
+        "targetFormId": "baby_blob",
+        "condition": {
+          "minAgeSeconds": 60,
+          "priority": 100
+        }
+      }
+    ]
+  },
+  {
+    "id": "baby_blob",
+    "name": "P'tit Goutte",
+    "stage": "baby",
+    "description": "Un nourrisson curieux et rebondissant qui découvre votre bureau avec émerveillement.",
+    "spriteSheet": "sprites/baby_blob.png",
+    "scale": 1.0,
+    "walkSpeed": 38,
+    "evolutions": [
+      {
+        "targetFormId": "child_sprout",
+        "condition": {
+          "minAgeSeconds": 300,
+          "priority": 100
+        }
+      }
+    ]
+  },
+  {
+    "id": "child_sprout",
+    "name": "Bourgeon Vif",
+    "stage": "child",
+    "description": "Un jeune familier plein d'entrain dont la feuille sur la tête réagit à vos soins quotidiens.",
+    "spriteSheet": "sprites/child_sprout.png",
+    "scale": 1.05,
+    "walkSpeed": 55,
+    "evolutions": [
+      {
+        "targetFormId": "adult_solar",
+        "condition": {
+          "minAgeSeconds": 900,
+          "maxCareMistakes": 1,
+          "minHappiness": 75,
+          "priority": 100
+        }
+      },
+      {
+        "targetFormId": "adult_athletic",
+        "condition": {
+          "minAgeSeconds": 900,
+          "maxCareMistakes": 3,
+          "minGamesPlayed": 3,
+          "priority": 80
+        }
+      },
+      {
+        "targetFormId": "adult_gourmet",
+        "condition": {
+          "minAgeSeconds": 900,
+          "maxCareMistakes": 3,
+          "preferredFoodCategory": "gourmet",
+          "priority": 60
+        }
+      },
+      {
+        "targetFormId": "adult_shadow",
+        "condition": {
+          "minAgeSeconds": 900,
+          "priority": 10
+        }
+      }
+    ]
+  },
+  {
+    "id": "adult_solar",
+    "name": "Solarix",
+    "stage": "adult",
+    "description": "Forme radieuse obtenue grâce à des soins exemplaires et un bonheur constant.",
+    "spriteSheet": "sprites/adult_solar.png",
+    "scale": 1.15,
+    "walkSpeed": 62,
+    "evolutions": []
+  },
+  {
+    "id": "adult_athletic",
+    "name": "Voltigeur",
+    "stage": "adult",
+    "description": "Forme dynamique et agile forgée par de nombreuses sessions d'entraînement et de mini-jeux.",
+    "spriteSheet": "sprites/adult_athletic.png",
+    "scale": 1.15,
+    "walkSpeed": 82,
+    "evolutions": []
+  },
+  {
+    "id": "adult_gourmet",
+    "name": "Bistronome",
+    "stage": "adult",
+    "description": "Forme joviale au palais raffiné, élevée avec les meilleurs mets gastronomiques.",
+    "spriteSheet": "sprites/adult_gourmet.png",
+    "scale": 1.2,
+    "walkSpeed": 48,
+    "evolutions": []
+  },
+  {
+    "id": "adult_shadow",
+    "name": "Noctambule",
+    "stage": "adult",
+    "description": "Forme mystérieuse et indépendante qui s'épanouit même après quelques oublis de soin.",
+    "spriteSheet": "sprites/adult_shadow.png",
+    "scale": 1.15,
+    "walkSpeed": 58,
+    "evolutions": []
+  }
+]

@@ -1,0 +1,14 @@
+# Dependencies
+node_modules/
+
+# Build & Package outputs
+dist/
+release/
+
+# Test coverage
+coverage/
+
+# Logs & OS files
+*.log
+.DS_Store
+Thumbs.db

@@ -1,0 +1,70 @@
+[
+  {
+    "id": "apple_fresh",
+    "name": "Pomme Croquante",
+    "icon": "🍎",
+    "description": "Un fruit frais et équilibré qui rassasie sans salir.",
+    "category": "healthy",
+    "effects": {
+      "hunger": 22,
+      "happiness": 6,
+      "energy": 4,
+      "cleanliness": 2
+    },
+    "cooldownMs": 2000
+  },
+  {
+    "id": "energy_berry",
+    "name": "Baie Tonique",
+    "icon": "🫐",
+    "description": "Une baie pétillante riche en vitamines qui redonne du tonus.",
+    "category": "energizing",
+    "effects": {
+      "hunger": 14,
+      "energy": 20,
+      "happiness": 8
+    },
+    "cooldownMs": 3000
+  },
+  {
+    "id": "honey_cake",
+    "name": "Gâteau au Miel",
+    "icon": "🍯",
+    "description": "Une friandise sucrée très appréciée, mais un peu collante.",
+    "category": "snack",
+    "effects": {
+      "hunger": 18,
+      "happiness": 22,
+      "energy": 6,
+      "cleanliness": -5
+    },
+    "cooldownMs": 3000
+  },
+  {
+    "id": "royal_sushi",
+    "name": "Plateau Gourmet",
+    "icon": "🍣",
+    "description": "Un mets raffiné préparé avec soin pour les palais exigeants.",
+    "category": "gourmet",
+    "effects": {
+      "hunger": 32,
+      "happiness": 18,
+      "energy": 10
+    },
+    "cooldownMs": 5000
+  },
+  {
+    "id": "herbal_soup",
+    "name": "Bouillon d'Herbes",
+    "icon": "🍵",
+    "description": "Une soupe apaisante et purifiante qui réconforte le familier.",
+    "category": "healthy",
+    "effects": {
+      "hunger": 20,
+      "energy": 12,
+      "happiness": 10,
+      "cleanliness": 5
+    },
+    "cooldownMs": 3500
+  }
+]

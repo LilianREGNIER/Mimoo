@@ -1,0 +1,24 @@
+{
+  "decayPerMinuteAwake": {
+    "hunger": 0.6,
+    "energy": 0.45,
+    "happiness": 0.5,
+    "cleanliness": 0.35
+  },
+  "decayPerMinuteAsleep": {
+    "hunger": 0.2,
+    "energy": 0,
+    "happiness": 0.1,
+    "cleanliness": 0.1
+  },
+  "sleepEnergyRecoveryPerMinute": 2.4,
+  "offlineFloor": 15,
+  "maxOfflineHours": 72,
+  "criticalThreshold": 25,
+  "careMistakeGraceSeconds": 300,
+  "petCooldownMs": 15000,
+  "petHappinessBonus": 8,
+  "cleanlinessBonusPerClean": 35,
+  "poopPenaltyPerMinute": 0.4,
+  "poopIntervalSeconds": 900
+}
