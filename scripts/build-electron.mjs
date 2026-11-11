@@ -1,4 +1,5 @@
 import { build } from 'esbuild';
+import { execSync } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -50,6 +51,22 @@ async function buildElectron() {
     path.join(rootDir, 'data'),
     path.join(rootDir, 'dist', 'data')
   );
+
+  // 3.5 Compilation du hook natif Windows si absent (assets/bin/activity-hook.exe)
+  const hookExePath = path.join(rootDir, 'assets', 'bin', 'activity-hook.exe');
+  const hookCsPath = path.join(rootDir, 'scripts', 'activity-hook.cs');
+  if (!fs.existsSync(hookExePath) && fs.existsSync(hookCsPath)) {
+    try {
+      const cscPath = 'C:\\Windows\\Microsoft.NET\\Framework64\\v4.0.30319\\csc.exe';
+      if (fs.existsSync(cscPath)) {
+        fs.mkdirSync(path.join(rootDir, 'assets', 'bin'), { recursive: true });
+        execSync(`"${cscPath}" /target:exe /out:"${hookExePath}" /optimize+ "${hookCsPath}"`, { stdio: 'ignore' });
+        console.log('[build-electron] Compilation du hook natif activity-hook.exe réussie.');
+      }
+    } catch (err) {
+      console.warn('[build-electron] Avertissement : impossible de compiler activity-hook.cs :', err?.message);
+    }
+  }
 
   // 4. Copie des assets graphiques (assets/ -> dist/assets/)
   copyDirectoryIfExists(

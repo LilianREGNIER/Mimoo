@@ -16,6 +16,7 @@ import {
   type BootstrapPayload,
   type CosmeticItem,
   type DisplayBoundsInfo,
+  type AnimationState,
   type FoodCategory,
   type FoodItem,
   type FormId,
@@ -33,7 +34,11 @@ import { HitTester } from './hitTester';
 import { MiniGamesController } from './miniGames';
 import { OnlineManager } from './onlineManager';
 import { PetActor } from './petActor';
-import { SpriteAnimator } from './spriteAnimator';
+import {
+  type DialoguePropType,
+  type ParticleKind,
+  SpriteAnimator,
+} from './spriteAnimator';
 
 const STAGE_LABELS: Record<string, string> = {
   egg: 'Œuf',
@@ -1280,63 +1285,217 @@ class DesktopPetRendererApp {
   }
 
   /**
-   * Déclenche un petit dialogue autonome et spontané du familier sur le bureau.
+   * Déclenche un petit dialogue autonome et spontané du familier sur le bureau,
+   * accompagné d'animations, d'accessoires thématiques (verre d'eau, café, bouclier, danse)
+   * et de gerbes de particules adaptées.
    */
   private triggerSpontaneousDialogue(): void {
     const pet = this.engine.getState();
     const hour = new Date().getHours();
 
-    const generalQuotes = [
-      `Il fait bon sur ce bureau avec toi, ${pet.name} veille au grain ! ✨`,
-      'Tu travailles bien ? Pense à faire une pause et t’étirer un peu ! ☕',
-      'J’adore regarder ta souris voyager sur l’écran ! 🐭',
-      'Je garde un œil sur ton bureau pendant que tu es concentré ! 🛡️',
-      'Un petit verre d’eau pour toi aussi ? Reste bien hydraté(e) ! 💧',
-      'Qu’est-ce qu’on fait de beau aujourd’hui ? 🐾',
-      'C’est tellement douillet ici sur ce bureau... (˘◡˘) 💕',
-      'Tu tapes super vite sur ton clavier ! ⌨️✨',
-      'Si tu as besoin d’une pause, je suis toujours prêt pour jouer ! 🎾',
-      'La météo du bureau : 100% de mignonnerie garantie ! ☀️',
-      'Chut... j’explore un nouveau recoin de l’écran ! 🗺️',
-      'Merci de prendre si bien soin de moi ! 💖',
-      'Petite sieste visuelle... non je rigole, je suis en pleine forme ! 🌟',
-      'Regarde mes super petits pas de danse ! 💃',
-      'Tu as toute mon admiration pour tes projets ! 🚀',
-      'Je suis tellement bien installé à côté de toi ! 🍀',
+    interface DialogueScenario {
+      text: string;
+      animState?: AnimationState;
+      prop?: DialoguePropType;
+      particleKind?: ParticleKind;
+      particleCount?: number;
+      durationMs?: number;
+    }
+
+    const generalScenarios: DialogueScenario[] = [
+      {
+        text: 'Un petit verre d’eau ? Reste bien hydraté(e) ! 💧',
+        animState: 'eat',
+        prop: 'water_glass',
+        particleKind: 'water',
+        particleCount: 6,
+        durationMs: 3800,
+      },
+      {
+        text: 'Regarde mes super petits pas de danse ! 💃',
+        animState: 'happy',
+        prop: 'dance',
+        particleKind: 'music',
+        particleCount: 8,
+        durationMs: 4000,
+      },
+      {
+        text: 'Tu travailles bien ? Pense à faire une pause et t’étirer un peu ! ☕',
+        animState: 'happy',
+        prop: 'coffee_cup',
+        particleKind: 'coffee',
+        particleCount: 6,
+        durationMs: 3800,
+      },
+      {
+        text: 'Tu tapes super vite sur ton clavier ! ⌨️✨',
+        animState: 'play',
+        prop: 'keyboard',
+        particleKind: 'keyboard',
+        particleCount: 6,
+        durationMs: 3600,
+      },
+      {
+        text: 'Si tu as besoin d’une pause, je suis toujours prêt pour jouer ! 🎾',
+        animState: 'play',
+        prop: 'tennis_ball',
+        particleKind: 'tennis',
+        particleCount: 6,
+        durationMs: 3600,
+      },
+      {
+        text: 'Je garde un œil sur ton bureau pendant que tu es concentré ! 🛡️',
+        animState: 'happy',
+        prop: 'shield',
+        particleKind: 'shield',
+        particleCount: 6,
+        durationMs: 3600,
+      },
+      {
+        text: 'La météo du bureau : 100% de mignonnerie garantie ! ☀️',
+        animState: 'happy',
+        prop: 'sun',
+        particleKind: 'sun',
+        particleCount: 6,
+        durationMs: 3600,
+      },
+      {
+        text: 'C’est tellement douillet ici sur ce bureau... (˘◡˘) 💕',
+        animState: 'happy',
+        particleKind: 'heart',
+        particleCount: 6,
+        durationMs: 3600,
+      },
+      {
+        text: 'J’adore regarder ta souris voyager sur l’écran ! 🐭',
+        animState: 'play',
+        particleKind: 'sparkle',
+        particleCount: 5,
+        durationMs: 3600,
+      },
+      {
+        text: `Il fait bon sur ce bureau avec toi, ${pet.name} veille au grain ! ✨`,
+        animState: 'happy',
+        particleKind: 'sparkle',
+        particleCount: 5,
+        durationMs: 3600,
+      },
+      {
+        text: 'Merci de prendre si bien soin de moi ! 💖',
+        animState: 'happy',
+        particleKind: 'heart',
+        particleCount: 6,
+        durationMs: 3600,
+      },
+      {
+        text: 'Chut... j’explore un nouveau recoin de l’écran ! 🗺️',
+        animState: 'walk',
+        particleKind: 'sparkle',
+        particleCount: 4,
+        durationMs: 3400,
+      },
     ];
 
-    const timeQuotes: string[] = [];
+    const timeScenarios: DialogueScenario[] = [];
     if (hour >= 6 && hour < 12) {
-      timeQuotes.push(
-        'Coucou ! Bien dormi ? Passe une merveilleuse journée ! 🌅',
-        'Prêt pour une belle matinée productive ! ☀️',
-        'Un bon petit café ou thé pour commencer la journée ? ☕'
+      timeScenarios.push(
+        {
+          text: 'Un bon petit café ou thé pour commencer la journée ? ☕',
+          animState: 'eat',
+          prop: 'coffee_cup',
+          particleKind: 'coffee',
+          particleCount: 6,
+          durationMs: 3800,
+        },
+        {
+          text: 'Coucou ! Bien dormi ? Passe une merveilleuse journée ! 🌅',
+          animState: 'happy',
+          prop: 'sun',
+          particleKind: 'sun',
+          particleCount: 6,
+          durationMs: 3800,
+        },
+        {
+          text: 'Prêt pour une belle matinée productive ! ☀️',
+          animState: 'happy',
+          particleKind: 'star',
+          particleCount: 6,
+          durationMs: 3600,
+        }
       );
     } else if (hour >= 12 && hour < 18) {
-      timeQuotes.push(
-        'Courage pour ton après-midi ! Tu es formidable ! 🌟',
-        'Une petite pause l’après-midi, ça fait toujours du bien ! 🍪',
-        'Le temps passe vite quand on s’amuse sur le bureau ! ⏳'
+      timeScenarios.push(
+        {
+          text: 'Courage pour ton après-midi ! Tu es formidable ! 🌟',
+          animState: 'happy',
+          particleKind: 'star',
+          particleCount: 6,
+          durationMs: 3600,
+        },
+        {
+          text: 'Une petite pause l’après-midi, ça fait toujours du bien ! 🍪',
+          animState: 'eat',
+          particleKind: 'crumb',
+          particleCount: 6,
+          durationMs: 3600,
+        }
       );
     } else if (hour >= 18 && hour < 23) {
-      timeQuotes.push(
-        'La journée touche à sa fin, repose tes yeux un peu ! 🌙',
-        'Belle soirée ! On forme une sacrée équipe tous les deux ! ✨',
-        'Une bonne soirée détente bien méritée ! 🛋️'
+      timeScenarios.push(
+        {
+          text: 'La journée touche à sa fin, repose tes yeux un peu ! 🌙',
+          animState: 'happy',
+          particleKind: 'sparkle',
+          particleCount: 5,
+          durationMs: 3600,
+        },
+        {
+          text: 'Belle soirée ! On forme une sacrée équipe tous les deux ! ✨',
+          animState: 'happy',
+          particleKind: 'heart',
+          particleCount: 6,
+          durationMs: 3600,
+        }
       );
     } else {
-      timeQuotes.push(
-        'Encore debout à cette heure ? N’oublie pas de dormir un peu ! 🌌😴',
-        'Chut... tout le monde dort, mais moi je veille sur toi ! 🌙💤',
-        'La nuit est paisible sur le bureau... 🌠'
+      timeScenarios.push(
+        {
+          text: 'Encore debout à cette heure ? N’oublie pas de dormir un peu ! 🌌😴',
+          animState: 'sleep',
+          particleKind: 'zzz',
+          particleCount: 6,
+          durationMs: 3800,
+        },
+        {
+          text: 'Chut... tout le monde dort, mais moi je veille sur toi ! 🌙💤',
+          animState: 'sleep',
+          particleKind: 'zzz',
+          particleCount: 5,
+          durationMs: 3600,
+        }
       );
     }
 
-    const allQuotes = [...generalQuotes, ...timeQuotes];
-    const pickedQuote = allQuotes[Math.floor(Math.random() * allQuotes.length)];
+    const allScenarios = [...generalScenarios, ...timeScenarios];
+    const picked = allScenarios[Math.floor(Math.random() * allScenarios.length)];
+    const duration = picked.durationMs ?? 3600;
 
-    this.showSpeechBubble(pickedQuote, 3600);
-    this.animator.spawnParticles('sparkle', this.petActor.x, this.petActor.y - 15, 4);
+    this.showSpeechBubble(picked.text, duration);
+
+    if (picked.animState) {
+      this.animator.setState(picked.animState, duration);
+    }
+    if (picked.prop) {
+      this.animator.setActiveDialogueProp(picked.prop, duration);
+    }
+    if (picked.particleKind) {
+      this.animator.spawnParticles(
+        picked.particleKind,
+        this.petActor.x,
+        this.petActor.y - 14,
+        picked.particleCount ?? 6
+      );
+    }
   }
 
   private async handleResetPet(): Promise<void> {
@@ -2170,7 +2329,9 @@ class DesktopPetRendererApp {
   }
 
   /**
-   * Positionne dynamiquement la bulle de dialogue, la jauge d'éponge et le panneau HUD au-dessus du familier.
+   * Positionne dynamiquement la bulle de dialogue et le panneau HUD.
+   * Si le menu HUD est ouvert, la bulle est décalée au-dessus du menu (ou sous le pet)
+   * pour ne JAMAIS être masquée ou cachée derrière le menu.
    */
   private updateFloatingPanelsPosition(): void {
     if (!this.petActor) {
@@ -2178,28 +2339,21 @@ class DesktopPetRendererApp {
     }
     const petHalf = this.petActor.getDrawSize() / 2;
 
-    if (this.speechBubbleEl && !this.speechBubbleEl.classList.contains('hidden')) {
-      const bubbleX = Math.min(
-        window.innerWidth - 120,
-        Math.max(120, Math.round(this.petActor.x))
-      );
-      const bubbleY = Math.max(
-        44,
-        Math.round(this.petActor.y - petHalf - 46)
-      );
-      this.speechBubbleEl.style.left = `${bubbleX}px`;
-      this.speechBubbleEl.style.top = `${bubbleY}px`;
-    }
+    const isHudOpen = Boolean(this.hudEl && !this.hudEl.classList.contains('hidden'));
+    let hudLeft = 0;
+    let hudTop = 0;
+    let hudWidth = 332;
+    let hudHeight = 250;
 
-    if (this.hudEl && !this.hudEl.classList.contains('hidden')) {
-      const hudWidth = this.hudEl.offsetWidth || 332;
-      const hudHeight = this.hudEl.offsetHeight || 250;
+    if (isHudOpen && this.hudEl) {
+      hudWidth = this.hudEl.offsetWidth || 332;
+      hudHeight = this.hudEl.offsetHeight || 250;
 
-      const left = Math.min(
+      hudLeft = Math.min(
         window.innerWidth - hudWidth - 16,
         Math.max(16, Math.round(this.petActor.x - hudWidth / 2))
       );
-      const top = Math.max(
+      hudTop = Math.max(
         16,
         Math.min(
           window.innerHeight - hudHeight - 16,
@@ -2207,8 +2361,47 @@ class DesktopPetRendererApp {
         )
       );
 
-      this.hudEl.style.left = `${left}px`;
-      this.hudEl.style.top = `${top}px`;
+      this.hudEl.style.left = `${hudLeft}px`;
+      this.hudEl.style.top = `${hudTop}px`;
+    }
+
+    if (this.speechBubbleEl && !this.speechBubbleEl.classList.contains('hidden')) {
+      let bubbleX = Math.min(
+        window.innerWidth - 120,
+        Math.max(120, Math.round(this.petActor.x))
+      );
+      let bubbleY = Math.round(this.petActor.y - petHalf - 46);
+      let isFlipped = false;
+
+      // Si le menu HUD est ouvert, on décale impérativement la bulle pour qu'elle reste toujours visible et au premier plan
+      if (isHudOpen) {
+        if (hudTop >= 50) {
+          // Assez d'espace au-dessus du menu HUD : bulle au-dessus du menu !
+          bubbleY = Math.round(hudTop - 12);
+          bubbleX = Math.min(
+            window.innerWidth - 120,
+            Math.max(120, Math.round(hudLeft + hudWidth / 2))
+          );
+        } else {
+          // Si le menu touche le haut de l'écran, on place la bulle sous le familier
+          bubbleY = Math.min(
+            window.innerHeight - 34,
+            Math.round(this.petActor.y + petHalf + 34)
+          );
+          isFlipped = true;
+        }
+      } else {
+        bubbleY = Math.max(44, bubbleY);
+      }
+
+      if (isFlipped) {
+        this.speechBubbleEl.classList.add('bubble-flipped');
+      } else {
+        this.speechBubbleEl.classList.remove('bubble-flipped');
+      }
+
+      this.speechBubbleEl.style.left = `${bubbleX}px`;
+      this.speechBubbleEl.style.top = `${bubbleY}px`;
     }
   }
 

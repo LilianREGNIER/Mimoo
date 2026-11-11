@@ -56,7 +56,23 @@ export type ParticleKind =
   | 'bubble'
   | 'foam'
   | 'egg_shard'
-  | 'confetti';
+  | 'confetti'
+  | 'water'
+  | 'music'
+  | 'coffee'
+  | 'keyboard'
+  | 'shield'
+  | 'tennis'
+  | 'sun';
+
+export type DialoguePropType =
+  | 'water_glass'
+  | 'coffee_cup'
+  | 'shield'
+  | 'tennis_ball'
+  | 'dance'
+  | 'keyboard'
+  | 'sun';
 
 export interface CanvasParticle {
   kind: ParticleKind;
@@ -278,6 +294,8 @@ export class SpriteAnimator {
   private ambientTimer = 0;
   private totalTimeSeconds = 0;
   private particles: CanvasParticle[] = [];
+  private activeDialogueProp: DialoguePropType | null = null;
+  private dialoguePropRemainingMs = 0;
 
   /**
    * Précharge les 19 spritesheets depuis `sprites/<formId>.png` (avec repli automatique).
@@ -408,6 +426,21 @@ export class SpriteAnimator {
     return this.state;
   }
 
+  /**
+   * Active un accessoire ou comportement visuel lié à un dialogue (ex: verre d'eau, danse, tasse de café).
+   */
+  public setActiveDialogueProp(type: DialoguePropType, durationMs: number = 3600): void {
+    this.activeDialogueProp = type;
+    this.dialoguePropRemainingMs = durationMs;
+  }
+
+  /** Retourne l'accessoire de dialogue actuellement affiché, le cas échéant. */
+  public getActiveDialogueProp(): DialoguePropType | null {
+    return this.activeDialogueProp && this.dialoguePropRemainingMs > 0
+      ? this.activeDialogueProp
+      : null;
+  }
+
   /** Indique si une animation temporaire (repas, joie, évolution) est en cours. */
   public isInTemporaryAnimation(): boolean {
     return this.temporaryStateRemainingMs > 0;
@@ -501,6 +534,55 @@ export class SpriteAnimator {
         spread: 90,
         life: 1.45,
       },
+      water: {
+        labels: ['💧', '🫧', '🧊', '✨'],
+        colors: ['#38bdf8', '#0284c7', '#bae6fd'],
+        speedY: -35,
+        spread: 42,
+        life: 1.1,
+      },
+      music: {
+        labels: ['🎵', '🎶', '✨', '💃'],
+        colors: ['#f472b6', '#c084fc', '#fde047'],
+        speedY: -45,
+        spread: 55,
+        life: 1.3,
+      },
+      coffee: {
+        labels: ['☕', '♨️', '✨'],
+        colors: ['#d97706', '#92400e', '#ffffff'],
+        speedY: -32,
+        spread: 35,
+        life: 1.2,
+      },
+      keyboard: {
+        labels: ['⌨️', '⚡', '✨', '💫'],
+        colors: ['#38bdf8', '#fbbf24', '#ffffff'],
+        speedY: -48,
+        spread: 50,
+        life: 1.1,
+      },
+      shield: {
+        labels: ['🛡️', '⭐', '✨', '🌟'],
+        colors: ['#f59e0b', '#fbbf24', '#60a5fa'],
+        speedY: -40,
+        spread: 45,
+        life: 1.2,
+      },
+      tennis: {
+        labels: ['🎾', '⭐', '✨'],
+        colors: ['#84cc16', '#a3e635', '#fde047'],
+        speedY: -55,
+        spread: 50,
+        life: 1.2,
+      },
+      sun: {
+        labels: ['☀️', '✨', '🌈', '🌟'],
+        colors: ['#f59e0b', '#fbbf24', '#fde047'],
+        speedY: -40,
+        spread: 50,
+        life: 1.3,
+      },
     };
 
     const cfg = configs[kind];
@@ -558,6 +640,13 @@ export class SpriteAnimator {
 
     if (this.eggShakeRemainingMs > 0) {
       this.eggShakeRemainingMs = Math.max(0, this.eggShakeRemainingMs - safeDt * 1000);
+    }
+
+    if (this.dialoguePropRemainingMs > 0) {
+      this.dialoguePropRemainingMs = Math.max(0, this.dialoguePropRemainingMs - safeDt * 1000);
+      if (this.dialoguePropRemainingMs === 0) {
+        this.activeDialogueProp = null;
+      }
     }
 
     // Résolution automatique de l'état d'animation prioritaire quand aucune animation temporaire n'est active
@@ -663,6 +752,10 @@ export class SpriteAnimator {
       const intensity = Math.min(1, this.eggShakeRemainingMs / 120);
       offsetX += Math.sin(this.totalTimeSeconds * 85) * 6.5 * intensity;
       offsetY += Math.cos(this.totalTimeSeconds * 110) * 3.5 * intensity;
+    } else if (this.activeDialogueProp === 'dance' && formId !== 'egg') {
+      // Danse rythmée joyeuse : balancement gauche/droite et petits sauts en cadence
+      offsetX += Math.sin(this.totalTimeSeconds * 16) * 5.5;
+      offsetY -= Math.abs(Math.sin(this.totalTimeSeconds * 11)) * 9;
     } else if (this.state === 'need_play' && formId !== 'egg') {
       offsetY -= Math.abs(Math.sin(this.totalTimeSeconds * 9.5)) * 10;
     } else if (this.state === 'hungry' && formId !== 'egg') {
@@ -814,6 +907,17 @@ export class SpriteAnimator {
         hatY,
         params.equippedCosmetics.hat,
         hatScale,
+        flipX
+      );
+    }
+
+    // 5.8 Accessoire/Prop de dialogue spontané (verre d'eau, tasse de café, bouclier, clavier, etc.)
+    if (formId !== 'egg' && this.activeDialogueProp && this.activeDialogueProp !== 'dance') {
+      this.renderDialogueProp(
+        ctx,
+        renderX,
+        renderY,
+        this.activeDialogueProp,
         flipX
       );
     }
@@ -1304,6 +1408,288 @@ export class SpriteAnimator {
       ctx.fillText('💖', -12 * s, 4 * s);
       ctx.fillText('💖', 12 * s, 4 * s);
     }
+    ctx.restore();
+  }
+
+  /**
+   * Rendu des objets thématiques animés qui accompagnent les dialogues spontanés.
+   */
+  private renderDialogueProp(
+    ctx: CanvasRenderingContext2D,
+    renderX: number,
+    renderY: number,
+    propType: DialoguePropType,
+    flipX: boolean
+  ): void {
+    switch (propType) {
+      case 'water_glass':
+        this.renderWaterGlassProp(ctx, renderX, renderY, flipX);
+        break;
+      case 'coffee_cup':
+        this.renderCoffeeCupProp(ctx, renderX, renderY, flipX);
+        break;
+      case 'shield':
+        this.renderShieldProp(ctx, renderX, renderY, flipX);
+        break;
+      case 'tennis_ball':
+        this.renderTennisBallProp(ctx, renderX, renderY, flipX);
+        break;
+      case 'keyboard':
+        this.renderKeyboardProp(ctx, renderX, renderY, flipX);
+        break;
+      case 'sun':
+        this.renderSunProp(ctx, renderX, renderY);
+        break;
+    }
+  }
+
+  private renderWaterGlassProp(
+    ctx: CanvasRenderingContext2D,
+    x: number,
+    y: number,
+    flipX: boolean
+  ): void {
+    const bob = Math.sin(this.totalTimeSeconds * 5) * 3;
+    const px = x + (flipX ? -28 : 28);
+    const py = y + 2 + bob;
+
+    ctx.save();
+    ctx.translate(px, py);
+
+    // Corps du verre en verre translucide
+    ctx.fillStyle = 'rgba(224, 242, 254, 0.55)';
+    ctx.strokeStyle = 'rgba(255, 255, 255, 0.9)';
+    ctx.lineWidth = 1.5;
+
+    ctx.beginPath();
+    ctx.moveTo(-9, -14);
+    ctx.lineTo(9, -14);
+    ctx.lineTo(7, 14);
+    ctx.lineTo(-7, 14);
+    ctx.closePath();
+    ctx.fill();
+    ctx.stroke();
+
+    // Eau fraîche à l'intérieur
+    ctx.fillStyle = 'rgba(56, 189, 248, 0.75)';
+    ctx.beginPath();
+    ctx.moveTo(-8, -6 + Math.sin(this.totalTimeSeconds * 8) * 1.5);
+    ctx.lineTo(8, -6 - Math.sin(this.totalTimeSeconds * 8) * 1.5);
+    ctx.lineTo(6.5, 12);
+    ctx.lineTo(-6.5, 12);
+    ctx.closePath();
+    ctx.fill();
+
+    // Glaçon flottant
+    ctx.fillStyle = 'rgba(255, 255, 255, 0.85)';
+    ctx.fillRect(-4, -4, 4, 4);
+
+    // Paille colorée inclinée
+    ctx.strokeStyle = '#f43f5e';
+    ctx.lineWidth = 2;
+    ctx.lineCap = 'round';
+    ctx.beginPath();
+    ctx.moveTo(2, 6);
+    ctx.lineTo(7, -18);
+    ctx.stroke();
+
+    // Reflet brillant sur le verre
+    ctx.strokeStyle = 'rgba(255, 255, 255, 0.9)';
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.moveTo(-6, -10);
+    ctx.lineTo(-5, 8);
+    ctx.stroke();
+
+    ctx.restore();
+  }
+
+  private renderCoffeeCupProp(
+    ctx: CanvasRenderingContext2D,
+    x: number,
+    y: number,
+    flipX: boolean
+  ): void {
+    const bob = Math.sin(this.totalTimeSeconds * 4) * 2;
+    const px = x + (flipX ? -26 : 26);
+    const py = y + 4 + bob;
+
+    ctx.save();
+    ctx.translate(px, py);
+
+    // Anse de la tasse
+    ctx.strokeStyle = '#fde68a';
+    ctx.lineWidth = 2.5;
+    ctx.beginPath();
+    ctx.arc(flipX ? -9 : 9, 0, 5, -Math.PI / 2, Math.PI / 2, !flipX);
+    ctx.stroke();
+
+    // Corps de la tasse
+    ctx.fillStyle = '#fef08a';
+    ctx.strokeStyle = '#b45309';
+    ctx.lineWidth = 1.5;
+    ctx.beginPath();
+    ctx.rect(-8, -8, 16, 16);
+    ctx.fill();
+    ctx.stroke();
+
+    // Surface du café chaud
+    ctx.fillStyle = '#78350f';
+    ctx.beginPath();
+    ctx.ellipse(0, -6, 6.5, 2.5, 0, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Vapeur montante animée
+    ctx.strokeStyle = 'rgba(255, 255, 255, 0.65)';
+    ctx.lineWidth = 1.5;
+    ctx.beginPath();
+    const steamOffset = (this.totalTimeSeconds * 12) % 18;
+    ctx.moveTo(-2, -10 - steamOffset);
+    ctx.bezierCurveTo(-5, -14 - steamOffset, 1, -18 - steamOffset, -2, -22 - steamOffset);
+    ctx.stroke();
+
+    ctx.restore();
+  }
+
+  private renderShieldProp(
+    ctx: CanvasRenderingContext2D,
+    x: number,
+    y: number,
+    flipX: boolean
+  ): void {
+    const px = x + (flipX ? -24 : 24);
+    const py = y + 1;
+
+    ctx.save();
+    ctx.translate(px, py);
+
+    // Bouclier héroïque doré
+    ctx.fillStyle = '#f59e0b';
+    ctx.strokeStyle = '#fbbf24';
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.moveTo(0, -14);
+    ctx.lineTo(10, -10);
+    ctx.lineTo(8, 6);
+    ctx.lineTo(0, 14);
+    ctx.lineTo(-8, 6);
+    ctx.lineTo(-10, -10);
+    ctx.closePath();
+    ctx.fill();
+    ctx.stroke();
+
+    // Emblème étoile au centre
+    ctx.fillStyle = '#ffffff';
+    ctx.font = '10px sans-serif';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText('⭐', 0, 0);
+
+    ctx.restore();
+  }
+
+  private renderTennisBallProp(
+    ctx: CanvasRenderingContext2D,
+    x: number,
+    y: number,
+    flipX: boolean
+  ): void {
+    // Rebond dynamique de la balle
+    const bounce = Math.abs(Math.sin(this.totalTimeSeconds * 8)) * 14;
+    const px = x + (flipX ? -26 : 26);
+    const py = y + 8 - bounce;
+
+    ctx.save();
+    ctx.translate(px, py);
+
+    ctx.fillStyle = '#bef264';
+    ctx.strokeStyle = '#4d7c0f';
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.arc(0, 0, 7.5, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.stroke();
+
+    // Coutures de la balle de tennis
+    ctx.strokeStyle = '#ffffff';
+    ctx.lineWidth = 1.2;
+    ctx.beginPath();
+    ctx.arc(-2, 0, 5, -Math.PI / 2, Math.PI / 2);
+    ctx.stroke();
+
+    ctx.restore();
+  }
+
+  private renderKeyboardProp(
+    ctx: CanvasRenderingContext2D,
+    x: number,
+    y: number,
+    flipX: boolean
+  ): void {
+    const px = x + (flipX ? -24 : 24);
+    const py = y + 6;
+
+    ctx.save();
+    ctx.translate(px, py);
+
+    ctx.fillStyle = '#1e293b';
+    ctx.strokeStyle = '#38bdf8';
+    ctx.lineWidth = 1.5;
+    ctx.beginPath();
+    ctx.rect(-12, -7, 24, 14);
+    ctx.fill();
+    ctx.stroke();
+
+    // Touches rétroéclairées
+    ctx.fillStyle = '#38bdf8';
+    for (let r = 0; r < 2; r++) {
+      for (let c = 0; c < 4; c++) {
+        ctx.fillRect(-9 + c * 5, -4 + r * 5, 3.5, 3);
+      }
+    }
+
+    ctx.restore();
+  }
+
+  private renderSunProp(
+    ctx: CanvasRenderingContext2D,
+    x: number,
+    y: number
+  ): void {
+    const py = y - 36;
+    ctx.save();
+    ctx.translate(x, py);
+
+    // Rayons tournants
+    const rot = this.totalTimeSeconds * 1.5;
+    ctx.strokeStyle = 'rgba(253, 224, 71, 0.7)';
+    ctx.lineWidth = 2;
+    for (let i = 0; i < 8; i++) {
+      const angle = rot + (i * Math.PI) / 4;
+      ctx.beginPath();
+      ctx.moveTo(Math.cos(angle) * 10, Math.sin(angle) * 10);
+      ctx.lineTo(Math.cos(angle) * 15, Math.sin(angle) * 15);
+      ctx.stroke();
+    }
+
+    ctx.fillStyle = '#facc15';
+    ctx.beginPath();
+    ctx.arc(0, 0, 9, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Sourire mignon sur le soleil
+    ctx.fillStyle = '#78350f';
+    ctx.beginPath();
+    ctx.arc(-3, -2, 1, 0, Math.PI * 2);
+    ctx.arc(3, -2, 1, 0, Math.PI * 2);
+    ctx.fill();
+
+    ctx.strokeStyle = '#78350f';
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.arc(0, 1, 3.5, 0.2, Math.PI - 0.2);
+    ctx.stroke();
+
     ctx.restore();
   }
 }
