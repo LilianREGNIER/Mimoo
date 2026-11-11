@@ -135,10 +135,6 @@ export class TrayManager {
         click: () => this.sendTrayAction('open-compendium'),
       },
       {
-        label: '🧪 Menu Test / Sandbox',
-        click: () => this.sendTrayAction('open-sandbox'),
-      },
-      {
         label: 'Recentrer le familier',
         click: () => this.sendTrayAction('center-pet'),
       },

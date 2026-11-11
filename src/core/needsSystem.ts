@@ -116,7 +116,9 @@ export function applyTickNeeds(
 
   const rawNeeds: NeedsState = {
     hunger: prevNeeds.hunger - decayRates.hunger * deltaMinutes,
-    energy: pet.isSleeping
+    energy: isOffline
+      ? prevNeeds.energy + config.sleepEnergyRecoveryPerMinute * deltaMinutes
+      : pet.isSleeping
       ? prevNeeds.energy + (config.sleepEnergyRecoveryPerMinute - decayRates.energy) * deltaMinutes
       : prevNeeds.energy - decayRates.energy * deltaMinutes,
     happiness: prevNeeds.happiness - decayRates.happiness * deltaMinutes,

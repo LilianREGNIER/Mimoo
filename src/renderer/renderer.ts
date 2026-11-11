@@ -25,7 +25,6 @@ import {
   type MiniGameResult,
   type NeedKey,
   type PetState,
-  type SandboxConditionType,
   type SpeciesFormDefinition,
   type StarterFormId,
   type TrayActionType,
@@ -138,9 +137,12 @@ class DesktopPetRendererApp {
   private readonly drawerFoodsEl = document.getElementById('drawer-foods');
   private readonly drawerGamesEl = document.getElementById('drawer-games');
   private readonly statsModalEl = document.getElementById('stats-modal');
-  private readonly sandboxModalEl = document.getElementById('sandbox-modal');
   private readonly shopModalEl = document.getElementById('shop-modal');
   private readonly onlineModalEl = document.getElementById('online-modal');
+
+  // Dialogues spontanés ("de temps en temps, juste comme ça")
+  private lastAutonomousDialogueTimestamp = performance.now();
+  private nextAutonomousDialogueDelayMs = 24_000 + Math.random() * 26_000;
   private readonly shopItemsGridEl = document.getElementById('shop-items-grid');
   private readonly shopCoinsValEl = document.getElementById('shop-coins-val');
   private readonly hudCoinsCountEl = document.getElementById('hud-coins-count');
@@ -258,7 +260,6 @@ class DesktopPetRendererApp {
 
     // 6. Construction des listes dynamiques et écouteurs d'événements UI / IPC
     this.renderFoodsDrawerList();
-    this.renderSandboxLineagesGrid();
     this.populateDisplaysSelect();
     this.syncSettingsControls();
     this.initDraggableShopModal();
@@ -266,7 +267,6 @@ class DesktopPetRendererApp {
     this.bindIpcListeners();
 
     this.refreshHudUI();
-    this.refreshSandboxMetricsUI();
     this.hitTester.evaluateAt(-1000, -1000);
 
     // Message d'accueil selon le stade (œuf à éclore ou familier éclos)
@@ -346,7 +346,6 @@ class DesktopPetRendererApp {
     const isAnyMenuOpen =
       !this.hudEl?.classList.contains('hidden') ||
       !this.statsModalEl?.classList.contains('hidden') ||
-      !this.sandboxModalEl?.classList.contains('hidden') ||
       !this.shopModalEl?.classList.contains('hidden') ||
       !this.onlineModalEl?.classList.contains('hidden');
 
@@ -439,11 +438,41 @@ class DesktopPetRendererApp {
     }
 
     this.refreshHudUI();
-    if (!this.sandboxModalEl?.classList.contains('hidden')) {
-      this.refreshSandboxMetricsUI();
-    }
     if (!this.statsModalEl?.classList.contains('hidden')) {
       this.refreshStatsAndCompendiumUI();
+    }
+
+    const pet = tickResult.pet;
+
+    // Dialogues autonomes spontanés ("de temps en temps, juste comme ça")
+    const isAnyMenuOpen =
+      !this.hudEl?.classList.contains('hidden') ||
+      !this.drawerFoodsEl?.classList.contains('hidden') ||
+      !this.drawerGamesEl?.classList.contains('hidden') ||
+      !this.statsModalEl?.classList.contains('hidden') ||
+      !this.shopModalEl?.classList.contains('hidden') ||
+      !this.onlineModalEl?.classList.contains('hidden');
+
+    const canSpeakSpontaneously =
+      pet.stage !== 'egg' &&
+      !pet.isSleeping &&
+      !this.isSpongeMode &&
+      !this.miniGames.isPlaying() &&
+      !isAnyMenuOpen &&
+      Boolean(this.speechBubbleEl?.classList.contains('hidden')) &&
+      tickResult.criticalNeeds.length === 0 &&
+      pet.needs.hunger >= 45 &&
+      !pet.needsCuddle &&
+      !pet.needsPlay;
+
+    if (canSpeakSpontaneously) {
+      if (nowMs - this.lastAutonomousDialogueTimestamp >= this.nextAutonomousDialogueDelayMs) {
+        this.lastAutonomousDialogueTimestamp = nowMs;
+        this.nextAutonomousDialogueDelayMs = 28_000 + Math.random() * 32_000;
+        this.triggerSpontaneousDialogue();
+      }
+    } else if (isAnyMenuOpen || pet.isSleeping || this.isSpongeMode || this.miniGames.isPlaying()) {
+      this.lastAutonomousDialogueTimestamp = nowMs;
     }
 
     // Sauvegarde automatique toutes les 30 secondes
@@ -475,7 +504,6 @@ class DesktopPetRendererApp {
     const isAnyMenuOpen =
       !this.hudEl?.classList.contains('hidden') ||
       !this.statsModalEl?.classList.contains('hidden') ||
-      !this.sandboxModalEl?.classList.contains('hidden') ||
       !this.shopModalEl?.classList.contains('hidden') ||
       !this.onlineModalEl?.classList.contains('hidden') ||
       !this.drawerFoodsEl?.classList.contains('hidden') ||
@@ -633,9 +661,6 @@ class DesktopPetRendererApp {
           this.stopSpongeMode();
         }
         this.closeAllPanels();
-      } else if (e.key === 'F2') {
-        e.preventDefault();
-        this.toggleSandboxModal();
       }
     });
 
@@ -805,10 +830,6 @@ class DesktopPetRendererApp {
       this.openStatsModal('tab-stats');
     });
 
-    document.getElementById('btn-action-sandbox')?.addEventListener('click', () => {
-      this.openSandboxModal();
-    });
-
     // Lancement des 2 mini-jeux
     document.getElementById('btn-start-star-catch')?.addEventListener('click', () => {
       if (!this.canStartMiniGame()) {
@@ -901,121 +922,6 @@ class DesktopPetRendererApp {
     document.getElementById('btn-reset-pet')?.addEventListener('click', () => {
       void this.handleResetPet();
     });
-
-    // Événements du Menu Spécial Test / Sandbox (#sandbox-modal)
-    this.bindSandboxEvents();
-  }
-
-  private bindSandboxEvents(): void {
-    document.getElementById('btn-close-sandbox')?.addEventListener('click', () => {
-      this.sandboxModalEl?.classList.add('hidden');
-      this.hitTester.refresh();
-    });
-
-    // 1) Recommencer / Choisir un Starter
-    document.getElementById('btn-sb-starter-egg')?.addEventListener('click', () => {
-      this.applySandboxForm(
-        'egg',
-        "🥚 Nouvel Œuf (0/5 clics) ! Cliquez 5 fois sur l'œuf pour le faire éclore !"
-      );
-    });
-
-    document.getElementById('btn-sb-starter-aqua')?.addEventListener('click', () => {
-      this.applySandboxForm('baby_aqua', "💧 Starter Eau : P'tit Goutte sélectionné !");
-    });
-
-    document.getElementById('btn-sb-starter-flora')?.addEventListener('click', () => {
-      this.applySandboxForm('baby_flora', "🌱 Starter Plante : P'tit Bourgeon sélectionné !");
-    });
-
-    document.getElementById('btn-sb-starter-ember')?.addEventListener('click', () => {
-      this.applySandboxForm('baby_ember', "🔥 Starter Feu : P'tite Braise sélectionné !");
-    });
-
-    document.getElementById('btn-sb-starter-random')?.addEventListener('click', () => {
-      const idx = Math.floor(Math.random() * STARTER_FORM_IDS.length);
-      const randomStarter: StarterFormId = STARTER_FORM_IDS[idx] ?? 'baby_aqua';
-      const updatedPet = this.engine.forceSetForm(randomStarter, Date.now());
-      const formDef = this.engine.getCurrentSpeciesForm();
-
-      this.syncActorWithCurrentForm();
-      this.animator.setState('evolve', 2400);
-      this.animator.spawnParticles('confetti', this.petActor.x, this.petActor.y, 12);
-      this.animator.spawnParticles('star', this.petActor.x, this.petActor.y, 8);
-
-      const lineageLabel = LINEAGE_LABELS[updatedPet.lineage] ?? updatedPet.lineage;
-      this.showSpeechBubble(
-        `🎉 Éclosion ! Voici ${formDef?.name ?? randomStarter} (Lignée ${lineageLabel}) !`,
-        4500
-      );
-      this.refreshAllPanelsUI();
-      void this.persistSaveState();
-    });
-
-    // 2) Forcer l'évolution suivante de la lignée actuelle
-    document.getElementById('btn-sb-force-evolve')?.addEventListener('click', () => {
-      const res = this.engine.forceEvolve(undefined, Date.now());
-      if (res.evolved && res.newForm) {
-        this.handleEvolutionTriggered(res.newForm);
-        this.refreshAllPanelsUI();
-      } else {
-        this.showSpeechBubble('⚡ Ce familier a déjà atteint sa forme adulte finale ! ✨');
-      }
-    });
-
-    // 3) Simuler les Besoins & Animations à la demande
-    document.getElementById('btn-sb-sim-hungry')?.addEventListener('click', () => {
-      this.runSandboxSimulation(
-        'hungry',
-        "🍖 Simulation Faim : J'ai le ventre qui gargouille !"
-      );
-    });
-
-    document.getElementById('btn-sb-sim-dirty')?.addEventListener('click', () => {
-      this.runSandboxSimulation(
-        'dirty',
-        "🧽 Simulation Saleté : Passez l'éponge sur votre familier !"
-      );
-    });
-
-    document.getElementById('btn-sb-sim-cuddle')?.addEventListener('click', () => {
-      this.runSandboxSimulation(
-        'need_cuddle',
-        '🥺 Simulation Câlin : Bras tendus, caressez-moi ! 💖'
-      );
-    });
-
-    document.getElementById('btn-sb-sim-play')?.addEventListener('click', () => {
-      this.runSandboxSimulation(
-        'need_play',
-        "🎾 Simulation Jeu : J'ai trop envie de jouer ! ⭐"
-      );
-    });
-
-    document.getElementById('btn-sb-sim-tired')?.addEventListener('click', () => {
-      this.runSandboxSimulation('tired', '💤 Simulation Fatigue : Énergie très basse...');
-    });
-
-    document.getElementById('btn-sb-sim-marathon')?.addEventListener('click', () => {
-      this.runSandboxSimulation(
-        'boost_marathon',
-        '⌨️ Boost Marathon appliqué (+15 000 entrées PC & +40h) !'
-      );
-    });
-
-    document.getElementById('btn-sb-sim-restore')?.addEventListener('click', () => {
-      this.runSandboxSimulation(
-        'full_restore',
-        '✨ Toutes les jauges sont restaurées à 100% !'
-      );
-    });
-
-    document.getElementById('btn-sb-add-coins')?.addEventListener('click', () => {
-      this.runSandboxSimulation(
-        'add_coins',
-        '🪙 +1 000 TamaCoins ajoutés à votre tirelire !'
-      );
-    });
   }
 
   private bindIpcListeners(): void {
@@ -1036,9 +942,6 @@ class DesktopPetRendererApp {
         this.handleEvolutionTriggered(res.newForm);
       }
       this.refreshHudUI();
-      if (!this.sandboxModalEl?.classList.contains('hidden')) {
-        this.refreshSandboxMetricsUI();
-      }
       if (!this.statsModalEl?.classList.contains('hidden')) {
         this.refreshStatsAndCompendiumUI();
       }
@@ -1059,9 +962,6 @@ class DesktopPetRendererApp {
       this.handleEvolutionTriggered(res.newForm);
     }
     this.refreshHudUI();
-    if (!this.sandboxModalEl?.classList.contains('hidden')) {
-      this.refreshSandboxMetricsUI();
-    }
   }
 
   private handleTrayAction(action: TrayActionType): void {
@@ -1097,7 +997,6 @@ class DesktopPetRendererApp {
         this.openStatsModal('tab-compendium');
         break;
       case 'open-sandbox':
-        this.openSandboxModal();
         break;
       case 'center-pet':
         this.petActor.centerOnScreen();
@@ -1380,90 +1279,64 @@ class DesktopPetRendererApp {
     this.petActor.setWalkSpeed(species?.walkSpeed ?? 0);
   }
 
-  private applySandboxForm(formId: FormId, customSpeech?: string): void {
-    if (this.isSpongeMode) {
-      this.stopSpongeMode();
-    }
-    this.engine.forceSetForm(formId, Date.now());
-    const species = this.engine.getCurrentSpeciesForm();
-    this.syncActorWithCurrentForm();
-    this.petActor.stopWalking();
+  /**
+   * Déclenche un petit dialogue autonome et spontané du familier sur le bureau.
+   */
+  private triggerSpontaneousDialogue(): void {
+    const pet = this.engine.getState();
+    const hour = new Date().getHours();
 
-    if (formId === 'egg') {
-      this.animator.forceState('idle');
-      this.animator.triggerEggShake(350);
-      this.animator.spawnParticles('sparkle', this.petActor.x, this.petActor.y, 6);
+    const generalQuotes = [
+      `Il fait bon sur ce bureau avec toi, ${pet.name} veille au grain ! ✨`,
+      'Tu travailles bien ? Pense à faire une pause et t’étirer un peu ! ☕',
+      'J’adore regarder ta souris voyager sur l’écran ! 🐭',
+      'Je garde un œil sur ton bureau pendant que tu es concentré ! 🛡️',
+      'Un petit verre d’eau pour toi aussi ? Reste bien hydraté(e) ! 💧',
+      'Qu’est-ce qu’on fait de beau aujourd’hui ? 🐾',
+      'C’est tellement douillet ici sur ce bureau... (˘◡˘) 💕',
+      'Tu tapes super vite sur ton clavier ! ⌨️✨',
+      'Si tu as besoin d’une pause, je suis toujours prêt pour jouer ! 🎾',
+      'La météo du bureau : 100% de mignonnerie garantie ! ☀️',
+      'Chut... j’explore un nouveau recoin de l’écran ! 🗺️',
+      'Merci de prendre si bien soin de moi ! 💖',
+      'Petite sieste visuelle... non je rigole, je suis en pleine forme ! 🌟',
+      'Regarde mes super petits pas de danse ! 💃',
+      'Tu as toute mon admiration pour tes projets ! 🚀',
+      'Je suis tellement bien installé à côté de toi ! 🍀',
+    ];
+
+    const timeQuotes: string[] = [];
+    if (hour >= 6 && hour < 12) {
+      timeQuotes.push(
+        'Coucou ! Bien dormi ? Passe une merveilleuse journée ! 🌅',
+        'Prêt pour une belle matinée productive ! ☀️',
+        'Un bon petit café ou thé pour commencer la journée ? ☕'
+      );
+    } else if (hour >= 12 && hour < 18) {
+      timeQuotes.push(
+        'Courage pour ton après-midi ! Tu es formidable ! 🌟',
+        'Une petite pause l’après-midi, ça fait toujours du bien ! 🍪',
+        'Le temps passe vite quand on s’amuse sur le bureau ! ⏳'
+      );
+    } else if (hour >= 18 && hour < 23) {
+      timeQuotes.push(
+        'La journée touche à sa fin, repose tes yeux un peu ! 🌙',
+        'Belle soirée ! On forme une sacrée équipe tous les deux ! ✨',
+        'Une bonne soirée détente bien méritée ! 🛋️'
+      );
     } else {
-      this.animator.setState('evolve', 1800);
-      this.animator.spawnParticles('sparkle', this.petActor.x, this.petActor.y, 8);
-      this.animator.spawnParticles('star', this.petActor.x, this.petActor.y, 5);
+      timeQuotes.push(
+        'Encore debout à cette heure ? N’oublie pas de dormir un peu ! 🌌😴',
+        'Chut... tout le monde dort, mais moi je veille sur toi ! 🌙💤',
+        'La nuit est paisible sur le bureau... 🌠'
+      );
     }
 
-    this.showSpeechBubble(
-      customSpeech ?? `Transformation en ${species?.name ?? formId} ! ⚡`,
-      3600
-    );
-    this.refreshAllPanelsUI();
-    void this.persistSaveState();
-  }
+    const allQuotes = [...generalQuotes, ...timeQuotes];
+    const pickedQuote = allQuotes[Math.floor(Math.random() * allQuotes.length)];
 
-  private runSandboxSimulation(type: SandboxConditionType, speechMsg: string): void {
-    // Si le pet est encore un œuf et qu'on simule un besoin de familier, on le fait éclore en starter
-    const currentPet = this.engine.getState();
-    if (
-      currentPet.stage === 'egg' &&
-      type !== 'boost_marathon' &&
-      type !== 'full_restore'
-    ) {
-      this.engine.forceSetForm('baby_aqua', Date.now());
-      this.syncActorWithCurrentForm();
-    }
-
-    this.engine.simulateCondition(type, Date.now());
-    this.petActor.stopWalking();
-
-    if (type === 'dirty') {
-      this.animator.forceState('sad');
-      this.startSpongeMode();
-    } else if (type === 'hungry') {
-      if (this.isSpongeMode) {
-        this.stopSpongeMode();
-      }
-      this.animator.forceState('hungry');
-    } else if (type === 'need_cuddle') {
-      if (this.isSpongeMode) {
-        this.stopSpongeMode();
-      }
-      this.animator.forceState('need_cuddle');
-    } else if (type === 'need_play') {
-      if (this.isSpongeMode) {
-        this.stopSpongeMode();
-      }
-      this.animator.forceState('need_play');
-    } else if (type === 'tired') {
-      if (this.isSpongeMode) {
-        this.stopSpongeMode();
-      }
-      this.animator.forceState('sad');
-    } else if (type === 'full_restore') {
-      if (this.isSpongeMode) {
-        this.stopSpongeMode();
-      }
-      this.animator.setState('happy', 1500);
-      this.animator.spawnParticles('sparkle', this.petActor.x, this.petActor.y, 8);
-      this.animator.spawnParticles('heart', this.petActor.x, this.petActor.y, 5);
-    } else if (type === 'boost_marathon') {
-      this.animator.spawnParticles('star', this.petActor.x, this.petActor.y, 8);
-      const evo = this.engine.checkEvolution();
-      if (evo.evolved && evo.newForm) {
-        this.handleEvolutionTriggered(evo.newForm);
-        return;
-      }
-    }
-
-    this.showSpeechBubble(speechMsg, 3800);
-    this.refreshAllPanelsUI();
-    void this.persistSaveState();
+    this.showSpeechBubble(pickedQuote, 3600);
+    this.animator.spawnParticles('sparkle', this.petActor.x, this.petActor.y - 15, 4);
   }
 
   private async handleResetPet(): Promise<void> {
@@ -1546,98 +1419,9 @@ class DesktopPetRendererApp {
     }
   }
 
-  /**
-   * Construit dans `#sandbox-lineages-container` la grille interactive des 19 formes
-   * classées par lignée (Œuf + Lignée Aquatique + Lignée Sylvestre + Lignée Astrale).
-   */
-  private renderSandboxLineagesGrid(): void {
-    const container = document.getElementById('sandbox-lineages-container');
-    if (!container) {
-      return;
-    }
-    container.innerHTML = '';
-
-    const speciesList = this.engine.getSpecies();
-    const currentFormId = this.engine.getState().formId;
-
-    const groups: Array<{ title: string; forms: SpeciesFormDefinition[] }> = [
-      {
-        title: '🥚 Stade Initial (Œuf)',
-        forms: speciesList.filter((s) => s.id === 'egg'),
-      },
-      {
-        title: '💧 Lignée Aquatique (Eau — 6 formes)',
-        forms: speciesList.filter((s) => s.lineage === 'aqua'),
-      },
-      {
-        title: '🌱 Lignée Sylvestre (Plante — 6 formes)',
-        forms: speciesList.filter((s) => s.lineage === 'flora'),
-      },
-      {
-        title: '🔥 Lignée Astrale (Feu / Cosmique — 6 formes)',
-        forms: speciesList.filter((s) => s.lineage === 'ember'),
-      },
-    ];
-
-    for (const grp of groups) {
-      const groupDiv = document.createElement('div');
-      groupDiv.className = 'lineage-group';
-
-      const titleEl = document.createElement('div');
-      titleEl.className = 'lineage-group-title';
-      titleEl.textContent = grp.title;
-      groupDiv.appendChild(titleEl);
-
-      const gridDiv = document.createElement('div');
-      gridDiv.className = 'lineage-forms-grid';
-
-      for (const form of grp.forms) {
-        const card = document.createElement('div');
-        card.className = `sandbox-form-card${form.id === currentFormId ? ' active-form' : ''}`;
-        card.dataset.formId = form.id;
-
-        const leftDiv = document.createElement('div');
-        leftDiv.className = 'sandbox-form-left';
-
-        const thumbCanvas = document.createElement('canvas');
-        thumbCanvas.width = 34;
-        thumbCanvas.height = 34;
-        thumbCanvas.className = 'sandbox-thumb-canvas';
-        this.animator.drawFormThumbnail(thumbCanvas, form.id);
-
-        const metaDiv = document.createElement('div');
-        metaDiv.className = 'sandbox-form-meta';
-        metaDiv.innerHTML = `
-          <span class="sandbox-form-name">${form.name}</span>
-          <span class="sandbox-form-stage">${STAGE_LABELS[form.stage] ?? form.stage}</span>
-        `;
-
-        leftDiv.appendChild(thumbCanvas);
-        leftDiv.appendChild(metaDiv);
-
-        const actionBtn = document.createElement('button');
-        actionBtn.type = 'button';
-        actionBtn.className = 'sandbox-transform-btn';
-        actionBtn.textContent = form.id === currentFormId ? 'Actuel ✓' : 'Choisir ⚡';
-        actionBtn.addEventListener('click', () => {
-          this.applySandboxForm(form.id);
-        });
-
-        card.appendChild(leftDiv);
-        card.appendChild(actionBtn);
-        gridDiv.appendChild(card);
-      }
-
-      groupDiv.appendChild(gridDiv);
-      container.appendChild(groupDiv);
-    }
-  }
-
   private refreshAllPanelsUI(): void {
     this.refreshHudUI();
     this.refreshStatsAndCompendiumUI();
-    this.refreshSandboxMetricsUI();
-    this.renderSandboxLineagesGrid();
     if (this.hudCoinsCountEl) {
       this.hudCoinsCountEl.textContent = String(this.engine.getState().tamaCoins);
     }
@@ -1656,26 +1440,6 @@ class DesktopPetRendererApp {
       (pet.careStats.totalPets ?? 0) +
       (pet.careStats.totalCleans ?? 0)
     );
-  }
-
-  private refreshSandboxMetricsUI(): void {
-    const pet = this.engine.getState();
-    const reqEgg = this.engine.getConfig().eggClicksRequired || 5;
-    const totalCare = this.getTotalCareActions(pet);
-
-    const setText = (id: string, text: string) => {
-      const el = document.getElementById(id);
-      if (el) {
-        el.textContent = text;
-      }
-    };
-
-    setText('sb-pc-clicks', (pet.careStats.pcMouseClicks ?? 0).toLocaleString('fr-FR'));
-    setText('sb-pc-keys', (pet.careStats.pcKeyPresses ?? 0).toLocaleString('fr-FR'));
-    setText('sb-pc-active', this.formatAge(pet.careStats.pcActiveSeconds ?? 0));
-    setText('sb-care-total', String(totalCare));
-    setText('sb-egg-clicks', `${pet.careStats.eggClicks ?? 0} / ${reqEgg}`);
-    setText('sb-pet-age', this.formatAge(pet.ageSeconds));
   }
 
   private refreshHudUI(): void {
@@ -1792,32 +1556,9 @@ class DesktopPetRendererApp {
     this.hitTester.refresh();
   }
 
-  private toggleSandboxModal(): void {
-    if (!this.sandboxModalEl) {
-      return;
-    }
-    if (this.sandboxModalEl.classList.contains('hidden')) {
-      this.openSandboxModal();
-    } else {
-      this.sandboxModalEl.classList.add('hidden');
-      this.hitTester.refresh();
-    }
-  }
-
-  private openSandboxModal(): void {
-    this.hideHudPanel();
-    this.petActor.stopWalking();
-    this.statsModalEl?.classList.add('hidden');
-    this.refreshSandboxMetricsUI();
-    this.renderSandboxLineagesGrid();
-    this.sandboxModalEl?.classList.remove('hidden');
-    this.hitTester.refresh();
-  }
-
   private closeAllPanels(): void {
     this.hideHudPanel();
     this.statsModalEl?.classList.add('hidden');
-    this.sandboxModalEl?.classList.add('hidden');
     this.shopModalEl?.classList.add('hidden');
     this.onlineModalEl?.classList.add('hidden');
     this.hitTester.refresh();
@@ -1875,7 +1616,6 @@ class DesktopPetRendererApp {
   private openShopModal(): void {
     this.hideHudPanel();
     this.statsModalEl?.classList.add('hidden');
-    this.sandboxModalEl?.classList.add('hidden');
     this.onlineModalEl?.classList.add('hidden');
     this.petActor.stopWalking();
 
@@ -2095,7 +1835,6 @@ class DesktopPetRendererApp {
     this.hideHudPanel();
     this.petActor.stopWalking();
     this.statsModalEl?.classList.add('hidden');
-    this.sandboxModalEl?.classList.add('hidden');
     this.shopModalEl?.classList.add('hidden');
     this.refreshOnlineUI();
     this.onlineModalEl?.classList.remove('hidden');
@@ -2156,7 +1895,6 @@ class DesktopPetRendererApp {
   private openStatsModal(initialTabId: string): void {
     this.hideHudPanel();
     this.petActor.stopWalking();
-    this.sandboxModalEl?.classList.add('hidden');
     this.shopModalEl?.classList.add('hidden');
     this.onlineModalEl?.classList.add('hidden');
     this.refreshStatsAndCompendiumUI();

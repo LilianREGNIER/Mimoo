@@ -61,9 +61,10 @@ describe('Cas limites système & QA (systemEdgeCases)', () => {
       expect(report.clampedMs).toBe(12 * HOUR_MS);
       expect(report.floorApplied).toBe(true);
 
-      // Aucun besoin ne tombe sous offlineFloor (15)
+      // La faim, le bonheur et la propreté ne tombent pas sous offlineFloor (15)
       expect(updated.needs.hunger).toBe(gameConfig.offlineFloor);
-      expect(updated.needs.energy).toBe(gameConfig.offlineFloor);
+      // L'énergie se régénère quand l'application/PC est éteint (jusqu'à 100%)
+      expect(updated.needs.energy).toBe(100);
       expect(updated.needs.happiness).toBe(gameConfig.offlineFloor);
       expect(updated.needs.cleanliness).toBe(gameConfig.offlineFloor);
       expect(updated.lastUpdatedAt).toBe(after12hMs);
@@ -81,7 +82,7 @@ describe('Cas limites système & QA (systemEdgeCases)', () => {
 
       expect(report.floorApplied).toBe(true);
       expect(updated.needs.hunger).toBe(12); // Ne descend pas sous 12 et ne remonte pas artificiellement
-      expect(updated.needs.energy).toBe(gameConfig.offlineFloor);
+      expect(updated.needs.energy).toBe(100); // L'énergie se régénère pendant l'extinction
       expect(updated.needs.happiness).toBe(gameConfig.offlineFloor);
       expect(updated.needs.cleanliness).toBe(gameConfig.offlineFloor);
     });
@@ -108,6 +109,17 @@ describe('Cas limites système & QA (systemEdgeCases)', () => {
       expect(after24h.formId).toBe('egg');
       expect(after24h.stage).toBe('egg');
       expect(after24h.needs).toEqual(save.pet.needs);
+    });
+
+    it('restaure l\'énergie proportionnellement au temps d\'extinction du PC jusqu\'à 100%', () => {
+      const startMs = 1_700_000_000_000;
+      const pet = createActivePet(startMs);
+      pet.needs.energy = 20;
+      // 20 minutes hors-ligne : 20 * 2.4 = 48 points récupérés -> 20 + 48 = 68
+      const after20minMs = startMs + 20 * 60 * 1000;
+
+      const { pet: updated } = computeOfflineCatchup(pet, after20minMs, gameConfig);
+      expect(updated.needs.energy).toBeCloseTo(68, 1);
     });
   });
 
@@ -183,7 +195,7 @@ describe('Cas limites système & QA (systemEdgeCases)', () => {
       expect(report.floorApplied).toBe(true);
 
       expect(updated.needs.hunger).toBe(gameConfig.offlineFloor);
-      expect(updated.needs.energy).toBe(gameConfig.offlineFloor);
+      expect(updated.needs.energy).toBe(100); // L'énergie se régénère pendant l'extinction
       expect(updated.needs.happiness).toBe(gameConfig.offlineFloor);
       expect(updated.needs.cleanliness).toBe(gameConfig.offlineFloor);
       expect(updated.ageSeconds).toBe(pet.ageSeconds + gameConfig.maxOfflineHours * 3600);
