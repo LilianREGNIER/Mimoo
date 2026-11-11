@@ -1271,3 +1271,312 @@ body.sponge-mode #pet-canvas {
   color: #ffffff;
   transform: translateY(-1px);
 }
+
+/* ----------------------------------------------------
+ * Styles Boutique & Garde-Robe (#shop-modal)
+ * ---------------------------------------------------- */
+.coins-badge {
+  background: rgba(234, 179, 8, 0.22);
+  border: 1px solid rgba(250, 204, 21, 0.55);
+  color: #fef08a;
+  font-weight: 700;
+}
+
+.shop-modal {
+  width: min(540px, 94vw);
+  max-height: 82vh;
+}
+
+.shop-title-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.shop-coins-pill {
+  background: rgba(234, 179, 8, 0.22);
+  border: 1px solid rgba(250, 204, 21, 0.6);
+  color: #fef08a;
+  font-size: 12px;
+  font-weight: 700;
+  padding: 3px 10px;
+  border-radius: 999px;
+}
+
+.shop-filter-bar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-bottom: 12px;
+}
+
+.shop-filter-btn {
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  color: #cbd5e1;
+  border-radius: 999px;
+  padding: 5px 12px;
+  font-size: 11.5px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.shop-filter-btn:hover {
+  background: rgba(255, 255, 255, 0.15);
+  color: #ffffff;
+}
+
+.shop-filter-btn.active {
+  background: var(--accent-primary);
+  border-color: #818cf8;
+  color: #ffffff;
+  font-weight: 600;
+}
+
+.shop-items-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+  gap: 10px;
+  max-height: 52vh;
+  overflow-y: auto;
+  padding-right: 4px;
+}
+
+.shop-item-card {
+  background: rgba(15, 23, 42, 0.75);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: var(--radius-sm);
+  padding: 10px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  gap: 6px;
+  transition: border-color 0.15s, transform 0.12s;
+}
+
+.shop-item-card:hover {
+  border-color: rgba(129, 140, 248, 0.5);
+  transform: translateY(-1px);
+}
+
+.shop-item-card.is-equipped {
+  border-color: rgba(34, 197, 94, 0.65);
+  background: rgba(34, 197, 94, 0.12);
+}
+
+.shop-item-icon {
+  font-size: 32px;
+  margin-bottom: 2px;
+}
+
+.shop-item-name {
+  font-size: 12px;
+  font-weight: 700;
+  color: #f8fafc;
+}
+
+.shop-item-slot {
+  font-size: 10px;
+  color: var(--text-secondary);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.shop-item-desc {
+  font-size: 10.5px;
+  color: #94a3b8;
+  line-height: 1.3;
+  min-height: 28px;
+}
+
+.shop-item-actions {
+  width: 100%;
+  margin-top: 4px;
+}
+
+.shop-action-btn {
+  width: 100%;
+  padding: 5px 8px;
+  border-radius: 6px;
+  font-size: 11px;
+  font-weight: 600;
+  cursor: pointer;
+  border: 1px solid transparent;
+  transition: all 0.14s ease;
+}
+
+.shop-action-btn.buy {
+  background: rgba(234, 179, 8, 0.25);
+  border-color: rgba(250, 204, 21, 0.55);
+  color: #fef08a;
+}
+
+.shop-action-btn.buy:hover:not(:disabled) {
+  background: rgba(234, 179, 8, 0.45);
+}
+
+.shop-action-btn.buy:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.shop-action-btn.equip {
+  background: rgba(99, 102, 241, 0.28);
+  border-color: rgba(129, 140, 248, 0.5);
+  color: #e0e7ff;
+}
+
+.shop-action-btn.equip:hover {
+  background: var(--accent-primary);
+  color: #ffffff;
+}
+
+.shop-action-btn.unequip {
+  background: rgba(239, 68, 68, 0.22);
+  border-color: rgba(248, 113, 113, 0.45);
+  color: #fca5a5;
+}
+
+.shop-action-btn.unequip:hover {
+  background: rgba(239, 68, 68, 0.4);
+}
+
+/* ----------------------------------------------------
+ * Styles Mode Online & Amis (#online-modal)
+ * ---------------------------------------------------- */
+.online-modal {
+  width: min(520px, 94vw);
+  max-height: 82vh;
+}
+
+.online-title-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.online-idle-badge {
+  background: rgba(148, 163, 184, 0.2);
+  border: 1px solid rgba(148, 163, 184, 0.4);
+  color: #cbd5e1;
+}
+
+.online-active-badge {
+  background: rgba(34, 197, 94, 0.22);
+  border: 1px solid rgba(34, 197, 94, 0.6);
+  color: #86efac;
+}
+
+.online-body {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  max-height: 65vh;
+  overflow-y: auto;
+}
+
+.online-visitor-card {
+  background: linear-gradient(135deg, rgba(34, 197, 94, 0.18), rgba(6, 182, 212, 0.18));
+  border: 1px solid rgba(34, 197, 94, 0.5);
+  border-radius: var(--radius-sm);
+  padding: 12px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.visitor-avatar {
+  font-size: 36px;
+  width: 48px;
+  height: 48px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(255, 255, 255, 0.08);
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.visitor-info {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-width: 0;
+}
+
+.visitor-info strong {
+  font-size: 14px;
+  color: #f8fafc;
+}
+
+.visitor-info span {
+  font-size: 11.5px;
+  color: #cbd5e1;
+}
+
+.visitor-info small {
+  font-size: 10.5px;
+  color: #a7f3d0;
+}
+
+.visitor-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.action-btn-highlight {
+  background: linear-gradient(135deg, #6366f1, #8b5cf6);
+  color: #ffffff;
+  border: none;
+  border-radius: 6px;
+  padding: 6px 12px;
+  font-size: 11.5px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: transform 0.12s, box-shadow 0.12s;
+}
+
+.action-btn-highlight:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(99, 102, 241, 0.4);
+}
+
+.online-section {
+  background: rgba(15, 23, 42, 0.65);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: var(--radius-sm);
+  padding: 10px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.online-section h3 {
+  margin: 0;
+  font-size: 12.5px;
+  color: #f8fafc;
+  font-weight: 700;
+}
+
+.online-desc {
+  margin: 0;
+  font-size: 11px;
+  color: var(--text-secondary);
+  line-height: 1.35;
+}
+
+.passport-copy-row,
+.passport-input-row,
+.room-input-row {
+  display: flex;
+  gap: 8px;
+  margin-top: 4px;
+}
+
+.sandbox-btn-coins {
+  background: rgba(234, 179, 8, 0.28) !important;
+  border-color: rgba(250, 204, 21, 0.6) !important;
+  color: #fef08a !important;
+}

@@ -34,6 +34,7 @@ export class PetActor {
   public isDragging = false;
   public isHovering = false;
   public isSpongeMode = false;
+  public hasActiveDemand = false;
   public lastCursorX = -1000;
   public lastCursorY = -1000;
 
@@ -119,6 +120,18 @@ export class PetActor {
     this.targetX = null;
     this.isMoving = false;
     this.aiPauseTimer = 3.2;
+  }
+
+  /**
+   * Définit si le familier est en manque de quelque chose ou réclame une action
+   * (faim, saleté, câlin, jeu, sommeil). Si oui, le passage de la souris ne produit aucune réaction.
+   */
+  public setHasActiveDemand(hasDemand: boolean): void {
+    this.hasActiveDemand = Boolean(hasDemand);
+    if (this.hasActiveDemand) {
+      this.isHovering = false;
+      this.rubDistanceAccumulator = 0;
+    }
   }
 
   /**
@@ -255,6 +268,15 @@ export class PetActor {
     }
 
     const hoveringNow = this.containsPoint(clientX, clientY, 14);
+
+    // Si le pet est en manque de quelque chose ou réclame une action (faim, saleté, câlin, jeu),
+    // il ne se passe STRICTEMENT RIEN lorsqu'on passe la souris sur lui (pas de survol, pas de regard, pas de caresse) !
+    if (this.hasActiveDemand) {
+      this.isHovering = false;
+      this.rubDistanceAccumulator = 0;
+      return;
+    }
+
     this.isHovering = hoveringNow;
 
     // Détection de la caresse au curseur (frotter la souris sur le familier)
@@ -362,25 +384,38 @@ export class PetActor {
       return;
     }
 
-    // En pause (idle) : regarde vers le curseur si la souris s'approche
+    // En pause (idle) : regarde vers le curseur si la souris s'approche (sauf s'il a une demande active !)
     this.isMoving = false;
-    const distToCursor = Math.hypot(this.lastMouseX - this.x, this.lastMouseY - this.y);
-    if (distToCursor < 220 && Math.abs(this.lastMouseX - this.x) > 14) {
-      this.flipX = this.lastMouseX < this.x;
+    if (!this.hasActiveDemand) {
+      const distToCursor = Math.hypot(this.lastMouseX - this.x, this.lastMouseY - this.y);
+      if (distToCursor < 220 && Math.abs(this.lastMouseX - this.x) > 14) {
+        this.flipX = this.lastMouseX < this.x;
+      }
     }
 
-    // Décompte avant la prochaine balade autonome
+    // Décompte avant la prochaine balade autonome sur TOUTE la largeur de l'écran
     this.aiPauseTimer -= safeDt;
     if (this.aiPauseTimer <= 0) {
       const margin = this.getHorizontalMargin();
       const minX = margin;
       const maxX = Math.max(margin + 40, window.innerWidth - margin);
-      const maxTravel = Math.min(280, (maxX - minX) * 0.45);
-      const delta = (Math.random() * 2 - 1) * maxTravel;
-      const candidateX = this.clampX(
-        Math.abs(delta) < 55 ? this.x + (Math.random() < 0.5 ? -90 : 90) : this.x + delta
-      );
-      this.targetX = candidateX;
+      // Choisit une destination libre sur toute la largeur de l'écran (avec grande variété de trajets)
+      const roll = Math.random();
+      let target: number;
+      if (roll < 0.35) {
+        // Grand trajet vers le côté opposé de l'écran
+        target = this.x > (minX + maxX) / 2
+          ? minX + Math.random() * ((maxX - minX) * 0.38)
+          : maxX - Math.random() * ((maxX - minX) * 0.38);
+      } else if (roll < 0.70) {
+        // Balade aléatoire n'importe où sur l'écran
+        target = minX + Math.random() * (maxX - minX);
+      } else {
+        // Petit déplacement local
+        const delta = (Math.random() < 0.5 ? -1 : 1) * (70 + Math.random() * 160);
+        target = this.x + delta;
+      }
+      this.targetX = this.clampX(target);
     }
   }
 

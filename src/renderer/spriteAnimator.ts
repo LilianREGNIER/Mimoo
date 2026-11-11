@@ -86,6 +86,11 @@ export interface RenderPetParams {
   isSpongeMode?: boolean;
   cursorX?: number;
   cursorY?: number;
+  equippedCosmetics?: {
+    hat: string | null;
+    accessory: string | null;
+    aura: string | null;
+  };
 }
 
 export const ALL_FORMS: readonly FormId[] = [
@@ -591,6 +596,17 @@ export class SpriteAnimator {
       this.renderPoops(ctx, x, shadowY - 6, halfSize, poopCount);
     }
 
+    // 2.5 Aura cosmétique équipée (dessinée derrière le familier)
+    if (formId !== 'egg' && params.equippedCosmetics?.aura) {
+      this.renderAuraCosmetic(
+        ctx,
+        renderX,
+        renderY,
+        params.equippedCosmetics.aura,
+        halfSize
+      );
+    }
+
     // 3. Effet lumineux spécial pour 'play', 'evolve', 'cleaning' ou œuf sur le point d'éclore
     const isGlowingEgg = formId === 'egg' && eggClicks >= 4;
     if (
@@ -664,6 +680,28 @@ export class SpriteAnimator {
       );
     }
 
+    // 5.5 Accessoire et Chapeau cosmétiques équipés (dessinés par-dessus le familier)
+    if (formId !== 'egg' && params.equippedCosmetics?.accessory) {
+      this.renderAccessoryCosmetic(
+        ctx,
+        renderX,
+        renderY - halfSize * 0.1,
+        params.equippedCosmetics.accessory,
+        scale,
+        flipX
+      );
+    }
+    if (formId !== 'egg' && params.equippedCosmetics?.hat) {
+      this.renderHatCosmetic(
+        ctx,
+        renderX,
+        renderY - halfSize * 0.72,
+        params.equippedCosmetics.hat,
+        scale,
+        flipX
+      );
+    }
+
     // 6. Bulle de pensée animée au-dessus du familier (faim, besoin de câlin, besoin de jouer, saleté)
     if (formId !== 'egg' && !isSpongeMode) {
       this.renderNeedThoughtBubble(
@@ -720,11 +758,15 @@ export class SpriteAnimator {
     const cleanDeficit = cleanliness < 60 ? (60 - cleanliness) / 60 : 0;
     const poopFactor = Math.min(1, poopCount * 0.32);
     const rawSeverity = Math.min(1, Math.max(0.38, cleanDeficit * 0.85 + poopFactor * 0.6));
+    // Estompage doux et continu des taches sous l'éponge jusqu'à disparition complète à 100%
     const scrubFade = Math.max(
-      0.06,
+      0,
       1 - Math.min(100, Math.max(0, cleaningProgress || 0)) / 100
     );
     const alpha = rawSeverity * scrubFade;
+    if (alpha <= 0.01) {
+      return;
+    }
 
     ctx.save();
 
@@ -1008,5 +1050,144 @@ export class SpriteAnimator {
       canvas.width,
       canvas.height
     );
+  }
+
+  /**
+   * Rendu visuel d'une aura cosmétique animée autour du familier.
+   */
+  private renderAuraCosmetic(
+    ctx: CanvasRenderingContext2D,
+    x: number,
+    y: number,
+    auraId: string,
+    radius: number
+  ): void {
+    ctx.save();
+    const t = this.totalTimeSeconds;
+    if (auraId === 'aura_rainbow') {
+      const colors = ['#ef4444', '#f97316', '#eab308', '#22c55e', '#06b6d4', '#8b5cf6'];
+      for (let i = 0; i < 6; i++) {
+        const ang = t * 2.2 + (i * Math.PI * 2) / 6;
+        const dist = radius * (1.1 + 0.15 * Math.sin(t * 3 + i));
+        const px = x + Math.cos(ang) * dist;
+        const py = y + Math.sin(ang) * (dist * 0.55);
+        ctx.fillStyle = colors[i];
+        ctx.font = '14px "Segoe UI Emoji", sans-serif';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillText('⭐', px, py);
+      }
+    } else if (auraId === 'aura_music') {
+      const notes = ['♪', '♫', '♬'];
+      for (let i = 0; i < 3; i++) {
+        const phase = (t * 1.5 + i * 0.8) % 3;
+        const px = x + Math.sin(t * 2 + i * 2) * (radius * 0.85);
+        const py = y - (phase * radius * 0.75);
+        const alpha = Math.max(0, 1 - phase / 3);
+        ctx.fillStyle = `rgba(168, 85, 247, ${alpha.toFixed(2)})`;
+        ctx.font = 'bold 16px "Segoe UI", sans-serif';
+        ctx.textAlign = 'center';
+        ctx.fillText(notes[i], px, py);
+      }
+    } else if (auraId === 'aura_sakura') {
+      for (let i = 0; i < 5; i++) {
+        const ang = -t * 1.8 + (i * Math.PI * 2) / 5;
+        const dist = radius * (1.05 + 0.1 * Math.cos(t * 2 + i));
+        const px = x + Math.cos(ang) * dist;
+        const py = y + Math.sin(ang) * (dist * 0.5);
+        ctx.font = '13px "Segoe UI Emoji", sans-serif';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillText('🌸', px, py);
+      }
+    } else if (auraId === 'aura_cyber') {
+      ctx.strokeStyle = `rgba(6, 182, 212, ${(0.5 + 0.3 * Math.sin(t * 4)).toFixed(2)})`;
+      ctx.lineWidth = 2.5;
+      ctx.beginPath();
+      ctx.ellipse(x, y + radius * 0.65, radius * 1.15, radius * 0.35, 0, 0, Math.PI * 2);
+      ctx.stroke();
+
+      ctx.strokeStyle = `rgba(236, 72, 153, ${(0.5 + 0.3 * Math.cos(t * 4)).toFixed(2)})`;
+      ctx.lineWidth = 1.5;
+      ctx.beginPath();
+      ctx.ellipse(x, y, radius * 0.9, radius * 0.9, t * 1.5, 0, Math.PI * 2);
+      ctx.stroke();
+    }
+    ctx.restore();
+  }
+
+  /**
+   * Rendu visuel d'un chapeau cosmétique sur le sommet de la tête du familier.
+   */
+  private renderHatCosmetic(
+    ctx: CanvasRenderingContext2D,
+    x: number,
+    y: number,
+    hatId: string,
+    scale: number,
+    flipX: boolean
+  ): void {
+    ctx.save();
+    ctx.translate(x, y);
+    if (flipX) ctx.scale(-1, 1);
+    const s = Math.max(0.7, scale);
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'bottom';
+
+    if (hatId === 'hat_crown') {
+      ctx.font = `${Math.round(24 * s)}px "Segoe UI Emoji", sans-serif`;
+      ctx.fillText('👑', 0, 8 * s);
+    } else if (hatId === 'hat_tophat') {
+      ctx.font = `${Math.round(24 * s)}px "Segoe UI Emoji", sans-serif`;
+      ctx.fillText('🎩', 0, 6 * s);
+    } else if (hatId === 'hat_bow') {
+      ctx.font = `${Math.round(22 * s)}px "Segoe UI Emoji", sans-serif`;
+      ctx.fillText('🎀', 0, 8 * s);
+    } else if (hatId === 'hat_wizard') {
+      ctx.font = `${Math.round(26 * s)}px "Segoe UI Emoji", sans-serif`;
+      ctx.fillText('🧙‍♂️', 0, 8 * s);
+    } else if (hatId === 'hat_cap') {
+      ctx.font = `${Math.round(22 * s)}px "Segoe UI Emoji", sans-serif`;
+      ctx.fillText('🧢', 0, 6 * s);
+    } else if (hatId === 'hat_halo') {
+      ctx.font = `${Math.round(22 * s)}px "Segoe UI Emoji", sans-serif`;
+      ctx.fillText('😇', 0, 2 * s);
+    }
+    ctx.restore();
+  }
+
+  /**
+   * Rendu visuel d'un accessoire cosmétique sur le visage/yeux du familier.
+   */
+  private renderAccessoryCosmetic(
+    ctx: CanvasRenderingContext2D,
+    x: number,
+    y: number,
+    accId: string,
+    scale: number,
+    flipX: boolean
+  ): void {
+    ctx.save();
+    ctx.translate(x, y);
+    if (flipX) ctx.scale(-1, 1);
+    const s = Math.max(0.7, scale);
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+
+    if (accId === 'acc_sunglasses') {
+      ctx.font = `${Math.round(22 * s)}px "Segoe UI Emoji", sans-serif`;
+      ctx.fillText('🕶️', 0, 0);
+    } else if (accId === 'acc_monocle') {
+      ctx.font = `${Math.round(20 * s)}px "Segoe UI Emoji", sans-serif`;
+      ctx.fillText('🧐', 0, 0);
+    } else if (accId === 'acc_star_glasses') {
+      ctx.font = `${Math.round(22 * s)}px "Segoe UI Emoji", sans-serif`;
+      ctx.fillText('🤩', 0, 0);
+    } else if (accId === 'acc_blush_hearts') {
+      ctx.font = `${Math.round(14 * s)}px "Segoe UI Emoji", sans-serif`;
+      ctx.fillText('💖', -14 * s, 6 * s);
+      ctx.fillText('💖', 14 * s, 6 * s);
+    }
+    ctx.restore();
   }
 }

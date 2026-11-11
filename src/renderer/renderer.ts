@@ -5,6 +5,7 @@
  * (faim, besoin de câlin, besoin de jouer), le suivi d'activité PC et le Menu Spécial Test / Sandbox.
  */
 
+import defaultCosmeticsJson from '../../data/cosmetics.json';
 import defaultFoodsJson from '../../data/foods.json';
 import defaultGameConfigJson from '../../data/game-config.json';
 import defaultSpeciesJson from '../../data/species.json';
@@ -13,10 +14,12 @@ import {
   PetEngine,
   STARTER_FORM_IDS,
   type BootstrapPayload,
+  type CosmeticItem,
   type DisplayBoundsInfo,
   type FoodCategory,
   type FoodItem,
   type FormId,
+  type FriendPetProfile,
   type GameConfig,
   type LineageId,
   type MiniGameResult,
@@ -29,6 +32,7 @@ import {
 } from '../core';
 import { HitTester } from './hitTester';
 import { MiniGamesController } from './miniGames';
+import { OnlineManager } from './onlineManager';
 import { PetActor } from './petActor';
 import { SpriteAnimator } from './spriteAnimator';
 
@@ -82,6 +86,7 @@ function createFallbackBootstrap(): BootstrapPayload {
     gameConfig: defaultGameConfigJson as GameConfig,
     foods: defaultFoodsJson as FoodItem[],
     species: defaultSpeciesJson as SpeciesFormDefinition[],
+    cosmetics: defaultCosmeticsJson as unknown as CosmeticItem[],
     offlineReport: {
       elapsedMs: 0,
       clampedMs: 0,
@@ -110,10 +115,12 @@ class DesktopPetRendererApp {
   private petActor!: PetActor;
   private miniGames!: MiniGamesController;
   private hitTester!: HitTester;
+  private onlineManager!: OnlineManager;
   private displays: DisplayBoundsInfo[] = [];
 
   // Mode Éponge / Brosse interactif
   private isSpongeMode = false;
+  private isPlayingTogetherWithFriend = false;
 
   // Cadence de rendu adaptative (30 FPS actif / 5 FPS éco repos)
   private isActiveFpsMode = true;
@@ -132,11 +139,15 @@ class DesktopPetRendererApp {
   private readonly drawerGamesEl = document.getElementById('drawer-games');
   private readonly statsModalEl = document.getElementById('stats-modal');
   private readonly sandboxModalEl = document.getElementById('sandbox-modal');
-  private readonly spongeBannerEl = document.getElementById('sponge-banner');
-  private readonly spongeBannerTextEl = document.getElementById('sponge-banner-text');
-  private readonly spongeProgressFillEl = document.getElementById('sponge-progress-fill');
+  private readonly shopModalEl = document.getElementById('shop-modal');
+  private readonly onlineModalEl = document.getElementById('online-modal');
+  private readonly shopItemsGridEl = document.getElementById('shop-items-grid');
+  private readonly shopCoinsValEl = document.getElementById('shop-coins-val');
+  private readonly hudCoinsCountEl = document.getElementById('hud-coins-count');
   private readonly speechBubbleEl = document.getElementById('pet-speech-bubble');
   private readonly speechTextEl = document.getElementById('pet-speech-text');
+
+  private currentShopCategory = 'all';
 
   constructor() {
     const canvasEl = document.getElementById('pet-canvas') as HTMLCanvasElement | null;
@@ -178,6 +189,7 @@ class DesktopPetRendererApp {
       config: payload.gameConfig,
       foods: payload.foods,
       species: payload.species,
+      cosmetics: payload.cosmetics ?? (defaultCosmeticsJson as unknown as CosmeticItem[]),
     });
 
     // 2. Initialisation du moteur de spritesheets (19 formes, 8 lignes)
@@ -208,6 +220,21 @@ class DesktopPetRendererApp {
     this.petActor.setScales(initialSpecies?.scale ?? 1, settings.petScale ?? 1);
     this.petActor.setWalkSpeed(initialSpecies?.walkSpeed ?? 0);
 
+    // 3.5 Initialisation du gestionnaire Mode Online & Amis
+    this.onlineManager = new OnlineManager({
+      onFriendArrival: (friend) => {
+        this.showSpeechBubble(`Un ami arrive : ${friend.name} (${friend.ownerName}) ! 👋`, 4000);
+        this.refreshOnlineUI();
+      },
+      onFriendDeparture: () => {
+        this.showSpeechBubble('Au revoir mon ami ! 👋', 2500);
+        this.refreshOnlineUI();
+      },
+      onPlayTogetherRequested: () => {
+        this.triggerPlayTogetherAnimation();
+      },
+    });
+
     // 4. Initialisation des 2 mini-jeux
     this.miniGames = new MiniGamesController(this.petActor, this.animator, {
       onGameComplete: (result) => this.handleMiniGameComplete(result),
@@ -220,6 +247,11 @@ class DesktopPetRendererApp {
       petActor: this.petActor,
       isPointOverMiniGameStar: (cx, cy) => this.miniGames.isPointOverStar(cx, cy),
       isSpongeModeActive: () => this.isSpongeMode,
+      isPointOverFriendPet: (cx, cy) => {
+        if (!this.onlineManager.hasVisitor()) return false;
+        const dist = Math.hypot(cx - this.onlineManager.friendX, cy - this.onlineManager.friendY);
+        return dist < 45;
+      },
     });
 
     // 6. Construction des listes dynamiques et écouteurs d'événements UI / IPC
@@ -311,7 +343,9 @@ class DesktopPetRendererApp {
     const isAnyMenuOpen =
       !this.hudEl?.classList.contains('hidden') ||
       !this.statsModalEl?.classList.contains('hidden') ||
-      !this.sandboxModalEl?.classList.contains('hidden');
+      !this.sandboxModalEl?.classList.contains('hidden') ||
+      !this.shopModalEl?.classList.contains('hidden') ||
+      !this.onlineModalEl?.classList.contains('hidden');
 
     const isSpeechVisible = !this.speechBubbleEl?.classList.contains('hidden');
     const animState = this.animator.getState();
@@ -424,6 +458,17 @@ class DesktopPetRendererApp {
     const hasPriorityNeedPose =
       pet.needs.hunger < 45 || pet.needsCuddle || pet.needsPlay;
 
+    // Si le pet a un besoin actif ou est en manque, la souris au survol ne produit aucune réaction
+    const hasDemand =
+      pet.stage !== 'egg' &&
+      (pet.needs.hunger < 45 ||
+        pet.needs.cleanliness < 60 ||
+        pet.poopCount > 0 ||
+        pet.needsCuddle ||
+        pet.needsPlay ||
+        pet.needs.energy < 30);
+    this.petActor.setHasActiveDemand(hasDemand);
+
     const canWalk =
       pet.stage !== 'egg' &&
       !pet.isSleeping &&
@@ -434,6 +479,14 @@ class DesktopPetRendererApp {
 
     this.petActor.update(dtSeconds, { canWalk });
     this.miniGames.update(dtSeconds);
+
+    // Mise à jour du pet ami en visite sur le bureau
+    this.onlineManager.update(
+      dtSeconds,
+      this.isPlayingTogetherWithFriend
+        ? this.petActor.x + (this.petActor.flipX ? 60 : -60)
+        : null
+    );
 
     this.animator.update(dtSeconds, {
       stage: pet.stage,
@@ -473,7 +526,54 @@ class DesktopPetRendererApp {
       isSpongeMode: this.isSpongeMode,
       cursorX: this.petActor.lastCursorX,
       cursorY: this.petActor.lastCursorY,
+      equippedCosmetics: pet.equippedCosmetics,
     });
+
+    // Rendu du pet ami en visite sur le bureau
+    const visitor = this.onlineManager.getVisitor();
+    if (visitor) {
+      this.animator.render({
+        ctx: this.ctx,
+        formId: visitor.formId,
+        x: this.onlineManager.friendX,
+        y: this.onlineManager.friendY,
+        groundY: this.petActor.getGroundY(),
+        scale: 1.0,
+        flipX: this.onlineManager.friendFlipX,
+        poopCount: 0,
+        cleanliness: 100,
+        cleaningProgress: 0,
+        eggClicks: 5,
+        equippedCosmetics: visitor.equippedCosmetics,
+      });
+
+      // Petite étiquette avec le nom au-dessus du pet ami
+      this.ctx.save();
+      this.ctx.font = 'bold 11.5px sans-serif';
+      this.ctx.textAlign = 'center';
+      const tagText = `${visitor.name} (${visitor.ownerName})`;
+      const textWidth = this.ctx.measureText(tagText).width;
+      this.ctx.fillStyle = 'rgba(15, 23, 42, 0.78)';
+      this.ctx.beginPath();
+      this.ctx.roundRect
+        ? this.ctx.roundRect(
+            this.onlineManager.friendX - textWidth / 2 - 8,
+            this.onlineManager.friendY - 54,
+            textWidth + 16,
+            20,
+            6
+          )
+        : this.ctx.rect(
+            this.onlineManager.friendX - textWidth / 2 - 8,
+            this.onlineManager.friendY - 54,
+            textWidth + 16,
+            20
+          );
+      this.ctx.fill();
+      this.ctx.fillStyle = '#86efac';
+      this.ctx.fillText(tagText, this.onlineManager.friendX, this.onlineManager.friendY - 40);
+      this.ctx.restore();
+    }
 
     this.miniGames.render(this.ctx);
   }
@@ -565,6 +665,94 @@ class DesktopPetRendererApp {
 
     document.getElementById('btn-action-clean')?.addEventListener('click', () => {
       this.handleCleanAction();
+    });
+
+    document.getElementById('btn-action-shop')?.addEventListener('click', () => {
+      this.openShopModal();
+    });
+
+    document.getElementById('btn-close-shop')?.addEventListener('click', () => {
+      this.closeShopModal();
+    });
+
+    document.getElementById('btn-action-online')?.addEventListener('click', () => {
+      this.openOnlineModal();
+    });
+
+    document.getElementById('btn-close-online')?.addEventListener('click', () => {
+      this.closeOnlineModal();
+    });
+
+    const shopFilterBtns = document.querySelectorAll<HTMLButtonElement>('.shop-filter-btn');
+    shopFilterBtns.forEach((btn) => {
+      btn.addEventListener('click', () => {
+        shopFilterBtns.forEach((b) => b.classList.remove('active'));
+        btn.classList.add('active');
+        this.currentShopCategory = btn.dataset.slot || 'all';
+        this.refreshShopUI();
+      });
+    });
+
+    document.getElementById('btn-copy-my-passport')?.addEventListener('click', async () => {
+      const code = this.engine.exportPassport('Moi');
+      try {
+        await navigator.clipboard.writeText(code);
+        this.showSpeechBubble('📋 Code Passeport copié dans le presse-papier !', 3000);
+      } catch {
+        this.showSpeechBubble(`📋 Votre code : ${code.slice(0, 24)}...`, 4000);
+      }
+    });
+
+    document.getElementById('btn-import-friend-passport')?.addEventListener('click', () => {
+      const input = document.getElementById('input-friend-passport') as HTMLInputElement | null;
+      const code = input?.value.trim();
+      if (!code) {
+        this.showSpeechBubble('Veuillez entrer un code passeport TAMA-...', 2800);
+        return;
+      }
+      const imported = this.engine.importPassport(code);
+      if (imported) {
+        this.onlineManager.setVisitor(imported);
+        if (input) input.value = '';
+        this.closeOnlineModal();
+      } else {
+        this.showSpeechBubble('❌ Code passeport invalide !', 3000);
+      }
+    });
+
+    document.getElementById('btn-join-room')?.addEventListener('click', () => {
+      const input = document.getElementById('input-room-code') as HTMLInputElement | null;
+      const roomCode = input?.value.trim() || 'PETS-1';
+      const myProfile: FriendPetProfile = {
+        id: `local-${Date.now()}`,
+        name: this.engine.getState().name,
+        ownerName: 'Moi',
+        formId: this.engine.getState().formId,
+        stage: this.engine.getState().stage,
+        lineage: this.engine.getState().lineage,
+        equippedCosmetics: this.engine.getState().equippedCosmetics,
+        happiness: this.engine.getState().needs.happiness,
+        x: this.petActor.x,
+        direction: this.petActor.flipX ? -1 : 1,
+        animationState: 'idle',
+      };
+      this.onlineManager.joinRoom(roomCode, myProfile);
+      this.showSpeechBubble(`⚡ Connecté au salon [${roomCode}] !`, 3500);
+    });
+
+    document.getElementById('btn-invite-simulated-friend')?.addEventListener('click', () => {
+      const sim = this.onlineManager.spawnSimulatedFriend();
+      this.showSpeechBubble(`🤖 Ami invité : ${sim.name} (${sim.ownerName}) est arrivé ! 🎉`, 4000);
+      this.closeOnlineModal();
+    });
+
+    document.getElementById('btn-online-play-together')?.addEventListener('click', () => {
+      this.triggerPlayTogetherAnimation();
+    });
+
+    document.getElementById('btn-online-say-goodbye')?.addEventListener('click', () => {
+      this.onlineManager.removeVisitor();
+      this.refreshOnlineUI();
     });
 
     document.getElementById('btn-action-stats')?.addEventListener('click', () => {
@@ -775,6 +963,13 @@ class DesktopPetRendererApp {
         '✨ Toutes les jauges sont restaurées à 100% !'
       );
     });
+
+    document.getElementById('btn-sb-add-coins')?.addEventListener('click', () => {
+      this.runSandboxSimulation(
+        'add_coins',
+        '🪙 +1 000 TamaCoins ajoutés à votre tirelire !'
+      );
+    });
   }
 
   private bindIpcListeners(): void {
@@ -846,6 +1041,12 @@ class DesktopPetRendererApp {
       case 'clean':
         this.handleCleanAction();
         break;
+      case 'open-shop':
+        this.openShopModal();
+        break;
+      case 'open-online':
+        this.openOnlineModal();
+        break;
       case 'open-compendium':
         this.openStatsModal('tab-compendium');
         break;
@@ -901,6 +1102,11 @@ class DesktopPetRendererApp {
 
       this.refreshAllPanelsUI();
       void this.persistSaveState();
+      return;
+    }
+
+    if (currentPet.needsCuddle) {
+      this.handlePetAction(this.petActor.x, this.petActor.y, false);
       return;
     }
 
@@ -1036,8 +1242,7 @@ class DesktopPetRendererApp {
     document.body.classList.add('sponge-mode');
 
     this.hideHudPanel();
-    this.updateSpongeBannerUI();
-    this.spongeBannerEl?.classList.remove('hidden');
+    this.showSpeechBubble("🧽 Frottez l'éponge sur votre familier pour le nettoyer !", 3500);
     this.updateFloatingPanelsPosition();
     this.hitTester.refresh();
   }
@@ -1046,19 +1251,7 @@ class DesktopPetRendererApp {
     this.isSpongeMode = false;
     this.petActor.isSpongeMode = false;
     document.body.classList.remove('sponge-mode');
-    this.spongeBannerEl?.classList.add('hidden');
     this.hitTester.refresh();
-  }
-
-  private updateSpongeBannerUI(): void {
-    const pet = this.engine.getState();
-    const pct = Math.round(pet.cleaningProgress ?? 0);
-    if (this.spongeBannerTextEl) {
-      this.spongeBannerTextEl.textContent = `🧽 Passez l'éponge sur ${pet.name} ! (${pct}%)`;
-    }
-    if (this.spongeProgressFillEl) {
-      this.spongeProgressFillEl.style.width = `${Math.max(0, Math.min(100, pct))}%`;
-    }
   }
 
   /**
@@ -1077,7 +1270,6 @@ class DesktopPetRendererApp {
     this.animator.spawnParticles('foam', cursorX, cursorY, 2);
     this.animator.setState('cleaning', 550);
 
-    this.updateSpongeBannerUI();
     this.refreshHudUI();
 
     if (result.completed) {
@@ -1405,6 +1597,15 @@ class DesktopPetRendererApp {
     this.refreshStatsAndCompendiumUI();
     this.refreshSandboxMetricsUI();
     this.renderSandboxLineagesGrid();
+    if (this.hudCoinsCountEl) {
+      this.hudCoinsCountEl.textContent = String(this.engine.getState().tamaCoins);
+    }
+    if (this.shopModalEl && !this.shopModalEl.classList.contains('hidden')) {
+      this.refreshShopUI();
+    }
+    if (this.onlineModalEl && !this.onlineModalEl.classList.contains('hidden')) {
+      this.refreshOnlineUI();
+    }
   }
 
   private getTotalCareActions(pet: PetState): number {
@@ -1485,10 +1686,6 @@ class DesktopPetRendererApp {
     const marathonCareEl = document.getElementById('hud-marathon-care');
     if (marathonCareEl) {
       marathonCareEl.textContent = `🫧 Soins : ${this.getTotalCareActions(pet)}`;
-    }
-
-    if (this.isSpongeMode) {
-      this.updateSpongeBannerUI();
     }
 
     this.updateFpsBadgeUI();
@@ -1578,12 +1775,181 @@ class DesktopPetRendererApp {
     this.hideHudPanel();
     this.statsModalEl?.classList.add('hidden');
     this.sandboxModalEl?.classList.add('hidden');
+    this.shopModalEl?.classList.add('hidden');
+    this.onlineModalEl?.classList.add('hidden');
     this.hitTester.refresh();
+  }
+
+  private openShopModal(): void {
+    this.hideHudPanel();
+    this.statsModalEl?.classList.add('hidden');
+    this.sandboxModalEl?.classList.add('hidden');
+    this.onlineModalEl?.classList.add('hidden');
+    this.refreshShopUI();
+    this.shopModalEl?.classList.remove('hidden');
+    this.hitTester.refresh();
+  }
+
+  private closeShopModal(): void {
+    this.shopModalEl?.classList.add('hidden');
+    this.hitTester.refresh();
+  }
+
+  private refreshShopUI(): void {
+    const pet = this.engine.getState();
+    const allCosmetics = this.engine.getCosmetics();
+
+    if (this.shopCoinsValEl) {
+      this.shopCoinsValEl.textContent = String(pet.tamaCoins);
+    }
+    if (this.hudCoinsCountEl) {
+      this.hudCoinsCountEl.textContent = String(pet.tamaCoins);
+    }
+
+    if (!this.shopItemsGridEl) return;
+    this.shopItemsGridEl.innerHTML = '';
+
+    const filtered =
+      this.currentShopCategory === 'all'
+        ? allCosmetics
+        : allCosmetics.filter((item) => item.slot === this.currentShopCategory);
+
+    for (const item of filtered) {
+      const isOwned = pet.ownedCosmetics.includes(item.id);
+      const isEquipped = pet.equippedCosmetics[item.slot] === item.id;
+
+      const card = document.createElement('div');
+      card.className = `shop-item-card ${isEquipped ? 'equipped' : isOwned ? 'owned' : ''}`;
+
+      const iconDiv = document.createElement('div');
+      iconDiv.className = 'shop-item-icon';
+      iconDiv.textContent = item.icon;
+
+      const nameDiv = document.createElement('div');
+      nameDiv.className = 'shop-item-name';
+      nameDiv.textContent = item.name;
+
+      const descDiv = document.createElement('div');
+      descDiv.className = 'shop-item-desc';
+      descDiv.textContent = item.description;
+
+      const actionBtn = document.createElement('button');
+      actionBtn.type = 'button';
+      actionBtn.className = `shop-btn ${isEquipped ? 'shop-btn-equipped' : isOwned ? 'shop-btn-equip' : 'shop-btn-buy'}`;
+
+      if (isEquipped) {
+        actionBtn.textContent = 'Déséquiper';
+        actionBtn.addEventListener('click', () => {
+          this.engine.equipCosmetic(item.slot, null);
+          this.refreshShopUI();
+          this.animator.spawnParticles('sparkle', this.petActor.x, this.petActor.y, 4);
+          void this.persistSaveState();
+        });
+      } else if (isOwned) {
+        actionBtn.textContent = 'Équiper';
+        actionBtn.addEventListener('click', () => {
+          this.engine.equipCosmetic(item.slot, item.id);
+          this.refreshShopUI();
+          this.animator.spawnParticles('star', this.petActor.x, this.petActor.y, 6);
+          this.showSpeechBubble(`Nouveau look : ${item.name} ${item.icon} ! ✨`, 2800);
+          void this.persistSaveState();
+        });
+      } else {
+        actionBtn.textContent = `🪙 ${item.price}`;
+        const canAfford = pet.tamaCoins >= item.price;
+        if (!canAfford) {
+          actionBtn.disabled = true;
+          actionBtn.title = 'Pas assez de TamaCoins ! Jouez ou soignez votre pet pour en gagner.';
+        }
+        actionBtn.addEventListener('click', () => {
+          const res = this.engine.buyCosmetic(item.id);
+          if (res.purchased) {
+            this.engine.equipCosmetic(item.slot, item.id);
+            this.refreshShopUI();
+            this.animator.spawnParticles('confetti', this.petActor.x, this.petActor.y, 10);
+            this.showSpeechBubble(`Acheté et équipé : ${item.name} ${item.icon} ! 🎉`, 3200);
+            void this.persistSaveState();
+          } else {
+            this.showSpeechBubble('Pas assez de pièces TamaCoins ! 🪙');
+          }
+        });
+      }
+
+      card.appendChild(iconDiv);
+      card.appendChild(nameDiv);
+      card.appendChild(descDiv);
+      card.appendChild(actionBtn);
+
+      this.shopItemsGridEl.appendChild(card);
+    }
+  }
+
+  private openOnlineModal(): void {
+    this.hideHudPanel();
+    this.statsModalEl?.classList.add('hidden');
+    this.sandboxModalEl?.classList.add('hidden');
+    this.shopModalEl?.classList.add('hidden');
+    this.refreshOnlineUI();
+    this.onlineModalEl?.classList.remove('hidden');
+    this.hitTester.refresh();
+  }
+
+  private closeOnlineModal(): void {
+    this.onlineModalEl?.classList.add('hidden');
+    this.hitTester.refresh();
+  }
+
+  public refreshOnlineUI(): void {
+    const passportInput = document.getElementById('input-my-passport') as HTMLInputElement | null;
+    if (passportInput) {
+      passportInput.value = this.engine.exportPassport('Moi');
+    }
+
+    const visitorCard = document.getElementById('online-visitor-card');
+    const visitorDetails = document.getElementById('visitor-details');
+    const visitor = this.onlineManager.getVisitor();
+
+    if (visitor && visitorCard && visitorDetails) {
+      visitorCard.classList.remove('hidden');
+      visitorDetails.textContent = `${visitor.name} (${visitor.ownerName}) — ${visitor.formId}`;
+    } else if (visitorCard) {
+      visitorCard.classList.add('hidden');
+    }
+  }
+
+  public triggerPlayTogetherAnimation(): void {
+    const visitor = this.onlineManager.getVisitor();
+    if (!visitor) {
+      this.showSpeechBubble("Aucun ami n'est en visite pour jouer ! Invitez un ami d'abord. 🌐", 3200);
+      return;
+    }
+
+    this.isPlayingTogetherWithFriend = true;
+    const result = this.engine.playWithFriend(Date.now());
+
+    this.animator.setState('happy', 3500);
+    this.animator.spawnParticles('heart', this.petActor.x, this.petActor.y, 8);
+    this.animator.spawnParticles('star', this.petActor.x, this.petActor.y, 8);
+    this.animator.spawnParticles('heart', this.onlineManager.friendX, this.onlineManager.friendY, 8);
+    this.animator.spawnParticles('sparkle', this.onlineManager.friendX, this.onlineManager.friendY, 8);
+
+    this.showSpeechBubble(
+      `🎉 ${this.engine.getState().name} et ${visitor.name} jouent ensemble ! (+${result.coinsEarned} 🪙)`,
+      4000
+    );
+    this.refreshAllPanelsUI();
+    void this.persistSaveState();
+
+    window.setTimeout(() => {
+      this.isPlayingTogetherWithFriend = false;
+    }, 3500);
   }
 
   private openStatsModal(initialTabId: string): void {
     this.hideHudPanel();
     this.sandboxModalEl?.classList.add('hidden');
+    this.shopModalEl?.classList.add('hidden');
+    this.onlineModalEl?.classList.add('hidden');
     this.refreshStatsAndCompendiumUI();
     this.syncSettingsControls();
     this.switchModalTab(initialTabId);
@@ -1865,26 +2231,14 @@ class DesktopPetRendererApp {
     }
     const petHalf = this.petActor.getDrawSize() / 2;
 
-    if (this.spongeBannerEl && !this.spongeBannerEl.classList.contains('hidden')) {
-      const bannerX = Math.min(
-        window.innerWidth - 165,
-        Math.max(165, Math.round(this.petActor.x))
-      );
-      const bannerY = Math.max(54, Math.round(this.petActor.y - petHalf - 16));
-      this.spongeBannerEl.style.left = `${bannerX}px`;
-      this.spongeBannerEl.style.top = `${bannerY}px`;
-    }
-
     if (this.speechBubbleEl && !this.speechBubbleEl.classList.contains('hidden')) {
       const bubbleX = Math.min(
         window.innerWidth - 120,
         Math.max(120, Math.round(this.petActor.x))
       );
-      const spongeOffset =
-        this.spongeBannerEl && !this.spongeBannerEl.classList.contains('hidden') ? 58 : 0;
       const bubbleY = Math.max(
         44,
-        Math.round(this.petActor.y - petHalf - 46 - spongeOffset)
+        Math.round(this.petActor.y - petHalf - 46)
       );
       this.speechBubbleEl.style.left = `${bubbleX}px`;
       this.speechBubbleEl.style.top = `${bubbleY}px`;

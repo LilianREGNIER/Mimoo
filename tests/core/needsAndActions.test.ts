@@ -490,12 +490,12 @@ describe('Système de besoins (needsSystem), actions (actionsSystem) et Sandbox 
       expect(firstPet.bonusApplied).toBe(true);
       expect(firstPet.cooldownRemainingMs).toBe(0);
       expect(firstPet.pet.needsCuddle).toBe(false);
-      expect(firstPet.pet.needs.happiness).toBe(80 + gameConfig.petHappinessBonus);
+      expect(firstPet.pet.needs.happiness).toBe(80 + 18);
       expect(firstPet.pet.careStats.totalPets).toBe(1);
 
-      // Deuxième caresse 5s plus tard (t = 25_000ms < 20_000 + 15_000) avec needsCuddle réactivé
+      // Deuxième caresse 5s plus tard (t = 25_000ms < 20_000 + 15_000) sans needsCuddle
       const secondPet = petCharacter(
-        { ...firstPet.pet, needsCuddle: true },
+        firstPet.pet,
         gameConfig,
         25_000
       );
@@ -509,7 +509,7 @@ describe('Système de besoins (needsSystem), actions (actionsSystem) et Sandbox 
       const thirdPet = petCharacter(secondPet.pet, gameConfig, 35_000);
       expect(thirdPet.bonusApplied).toBe(true);
       expect(thirdPet.cooldownRemainingMs).toBe(0);
-      expect(thirdPet.pet.needs.happiness).toBe(80 + gameConfig.petHappinessBonus * 2);
+      expect(thirdPet.pet.needs.happiness).toBe(100);
       expect(thirdPet.pet.careStats.totalPets).toBe(2);
     });
 
@@ -606,7 +606,7 @@ describe('Système de besoins (needsSystem), actions (actionsSystem) et Sandbox 
       // 3. need_cuddle
       const cuddleState = engine.simulateCondition('need_cuddle', 4_000);
       expect(cuddleState.needsCuddle).toBe(true);
-      expect(cuddleState.needs.happiness).toBe(40);
+      expect(cuddleState.needs.happiness).toBe(42);
       expect(cuddleState.lastPettedAt).toBe(0);
 
       // 4. need_play

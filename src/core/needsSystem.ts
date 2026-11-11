@@ -190,21 +190,17 @@ export function applyTickNeeds(
     pet.lastPettedAt > 0 &&
     pet.lastUpdatedAt + deltaSeconds * 1000 - pet.lastPettedAt >= CUDDLE_NEGLECT_ONLINE_MS;
 
-  const nextNeedsCuddle = pet.isSleeping
+  const nextNeedsCuddle = pet.isSleeping || recentlyPetted
     ? false
-    : recentlyPetted
-      ? Boolean(pet.needsCuddle)
-      : Boolean(pet.needsCuddle) || nextNeeds.happiness < 55 || longSinceLastPetOnline;
+    : Boolean(pet.needsCuddle) || nextNeeds.happiness < 55 || longSinceLastPetOnline;
 
   const recentlyPlayed =
     pet.careStats.lastPlayedAt > 0 &&
     pet.lastUpdatedAt + deltaSeconds * 1000 - pet.careStats.lastPlayedAt < 180_000;
 
-  const nextNeedsPlay = pet.isSleeping
+  const nextNeedsPlay = pet.isSleeping || recentlyPlayed
     ? false
-    : recentlyPlayed
-      ? Boolean(pet.needsPlay)
-      : (Boolean(pet.needsPlay) || nextNeeds.happiness < 48) && nextNeeds.energy > 30;
+    : (Boolean(pet.needsPlay) || nextNeeds.happiness < 48) && nextNeeds.energy > 30;
 
   const updatedPet: PetState = {
     ...pet,

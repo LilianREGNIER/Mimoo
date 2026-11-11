@@ -22,21 +22,6 @@
       <span id="pet-speech-text">Bonjour ! ✨</span>
     </div>
 
-    <!-- Jauge flottante du Mode Éponge / Brosse au-dessus du familier -->
-    <div id="sponge-banner" class="sponge-banner ui-interactive hidden" aria-live="polite">
-      <div class="sponge-banner-top">
-        <span id="sponge-banner-text" class="sponge-banner-text">
-          🧽 Passez l'éponge sur Mochi ! (0%)
-        </span>
-        <button id="btn-cancel-sponge" class="sponge-cancel-btn" title="Quitter le mode éponge">
-          Annuler
-        </button>
-      </div>
-      <div class="sponge-progress-track">
-        <div id="sponge-progress-fill" class="sponge-progress-fill" style="width: 0%"></div>
-      </div>
-    </div>
-
     <!-- Bandeau flottant du mini-jeu Attrape-Étoile (affiché uniquement pendant star_catch) -->
     <div id="star-catch-banner" class="star-catch-banner ui-interactive hidden">
       <div class="star-catch-info">
@@ -59,6 +44,9 @@
           <span id="hud-pet-stage" class="hud-badge stage-badge">Œuf Étoilé</span>
         </div>
         <div class="hud-meta">
+          <span id="hud-coins-pill" class="hud-badge coins-badge" title="Pièces TamaCoins gagnées">
+            🪙 <span id="hud-coins-count">100</span>
+          </span>
           <span id="hud-fps-badge" class="hud-badge fps-badge" title="Cadence de rendu adaptative">
             🍃 5 FPS Éco
           </span>
@@ -170,6 +158,14 @@
           <span class="action-emoji">🧽</span>
           <span class="action-label">Nettoyer</span>
           <span id="badge-poop-count" class="action-Counter hidden">0</span>
+        </button>
+        <button id="btn-action-shop" class="action-btn" title="Boutique cosmétique et garde-robe">
+          <span class="action-emoji">🛍️</span>
+          <span class="action-label">Boutique</span>
+        </button>
+        <button id="btn-action-online" class="action-btn" title="Mode Online et visite d'amis">
+          <span class="action-emoji">🌐</span>
+          <span class="action-label">Amis Online</span>
         </button>
         <button id="btn-action-stats" class="action-btn" title="Statistiques, Compendium & Réglages">
           <span class="action-emoji">📊</span>
@@ -481,6 +477,9 @@
             <button type="button" id="btn-sb-sim-marathon" class="sandbox-btn sandbox-btn-accent">
               ⌨️ Boost Marathon (+15 000 clics/touches PC & +40h)
             </button>
+            <button type="button" id="btn-sb-add-coins" class="sandbox-btn sandbox-btn-coins">
+              🪙 +1 000 TamaCoins (Boutique)
+            </button>
             <button type="button" id="btn-sb-sim-restore" class="sandbox-btn sandbox-btn-success">
               ✨ Tout restaurer à 100%
             </button>
@@ -502,6 +501,102 @@
             </button>
           </div>
           <div id="sandbox-lineages-container" class="sandbox-lineages-container"></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Fenêtre Boutique Cosmétique & Garde-Robe (#shop-modal) -->
+    <section
+      id="shop-modal"
+      class="glass-panel modal-panel shop-modal ui-interactive hidden"
+      aria-label="Boutique cosmétique et garde-robe"
+    >
+      <header class="modal-header">
+        <div class="shop-title-row">
+          <h2 class="modal-title">🛍️ Boutique & Garde-Robe</h2>
+          <span class="shop-coins-pill">🪙 <span id="shop-coins-val">100</span> TamaCoins</span>
+        </div>
+        <button id="btn-close-shop" class="icon-close-btn" title="Fermer (Échap)">✕</button>
+      </header>
+      <div class="modal-body shop-body">
+        <div class="shop-filter-bar">
+          <button class="shop-filter-btn active" data-category="all">✨ Tous</button>
+          <button class="shop-filter-btn" data-category="hat">👑 Chapeaux</button>
+          <button class="shop-filter-btn" data-category="accessory">🕶️ Accessoires</button>
+          <button class="shop-filter-btn" data-category="aura">🌈 Auras</button>
+          <button class="shop-filter-btn" data-category="inventory">🎒 Mon Inventaire</button>
+        </div>
+        <div id="shop-items-grid" class="shop-items-grid"></div>
+      </div>
+    </section>
+
+    <!-- Fenêtre Mode Online & Amis (#online-modal) -->
+    <section
+      id="online-modal"
+      class="glass-panel modal-panel online-modal ui-interactive hidden"
+      aria-label="Mode Online et Amis"
+    >
+      <header class="modal-header">
+        <div class="online-title-row">
+          <h2 class="modal-title">🌐 Mode Online — Visite d'Amis</h2>
+          <span id="online-status-badge" class="hud-badge online-idle-badge">En veille</span>
+        </div>
+        <button id="btn-close-online" class="icon-close-btn" title="Fermer (Échap)">✕</button>
+      </header>
+      <div class="modal-body online-body">
+        <!-- Carte du visiteur actuel s'il y en a un -->
+        <div id="online-visitor-card" class="online-visitor-card hidden">
+          <div class="visitor-avatar" id="visitor-avatar">💧</div>
+          <div class="visitor-info">
+            <strong id="visitor-name">P'tit Goutte</strong>
+            <span id="visitor-owner">Compagnon de : Ami</span>
+            <small id="visitor-cosmetics">Aucun accessoire</small>
+          </div>
+          <div class="visitor-actions">
+            <button id="btn-online-play-together" class="action-btn-highlight">
+              🎉 Faire jouer les 2 pets ensemble
+            </button>
+            <button id="btn-online-say-goodbye" class="secondary-btn">
+              Dire au revoir 👋
+            </button>
+          </div>
+        </div>
+
+        <!-- Section 1 : Mon Code Passeport -->
+        <div class="online-section">
+          <h3>📋 Mon Code Passeport Tamagotchi</h3>
+          <p class="online-desc">Partagez ce code avec vos amis pour qu'ils puissent recevoir votre pet chez eux !</p>
+          <div class="passport-copy-row">
+            <input type="text" id="input-my-passport" class="text-input" readonly />
+            <button id="btn-copy-my-passport" class="secondary-btn">Copier</button>
+          </div>
+        </div>
+
+        <!-- Section 2 : Recevoir un ami par Code Passeport -->
+        <div class="online-section">
+          <h3>📥 Inviter le Pet d'un Ami (Code Passeport)</h3>
+          <div class="passport-input-row">
+            <input type="text" id="input-friend-passport" class="text-input" placeholder="Collez le code TAMA-... ici" />
+            <button id="btn-import-friend-passport" class="action-btn-highlight">Recevoir l'Ami</button>
+          </div>
+        </div>
+
+        <!-- Section 3 : Salon Temps Réel (Live Room) -->
+        <div class="online-section">
+          <h3>⚡ Salon Temps Réel (Live Room)</h3>
+          <p class="online-desc">Connectez-vous au même nom de salon pour synchroniser vos deux pets en direct sur le même réseau ou machine.</p>
+          <div class="room-input-row">
+            <input type="text" id="input-room-code" class="text-input" placeholder="Code salon (ex: PETS-1)" value="PETS-1" />
+            <button id="btn-join-room" class="secondary-btn">Rejoindre / Créer</button>
+          </div>
+        </div>
+
+        <!-- Section 4 : Inviter un ami simulé pour tester tout de suite ! -->
+        <div class="online-section test-section">
+          <h3>🤖 Test Immédiat</h3>
+          <button id="btn-invite-simulated-friend" class="sandbox-btn sandbox-btn-accent">
+            🎲 Inviter un Ami Aléatoire Simulé (avec accessoires !)
+          </button>
         </div>
       </div>
     </section>

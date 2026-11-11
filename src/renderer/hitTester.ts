@@ -13,6 +13,8 @@ export interface HitTestTargetProvider {
   isPointOverMiniGameStar: (clientX: number, clientY: number) => boolean;
   /** Indique si le Mode Éponge / Brosse est actif (+90 px de zone interactive autour du pet). */
   isSpongeModeActive?: () => boolean;
+  /** Teste si le curseur survole un pet ami en visite sur le bureau. */
+  isPointOverFriendPet?: (clientX: number, clientY: number) => boolean;
 }
 
 /**
@@ -85,6 +87,11 @@ export class HitTester {
 
     // 3. Étoile active du mini-jeu Attrape-Étoile
     if (isPointOverMiniGameStar(clientX, clientY)) {
+      return true;
+    }
+
+    // 3.5 Pet ami en visite sur le bureau
+    if (this.provider.isPointOverFriendPet?.(clientX, clientY)) {
       return true;
     }
 
