@@ -20,6 +20,8 @@ import type {
   SpeciesFormDefinition,
   UserSettings,
 } from '../core/types';
+import fs from 'node:fs';
+import path from 'node:path';
 import { applyAutoStartSetting } from './autoStart';
 import { NotificationManager } from './notifications';
 import { PcActivityTracker } from './pcActivityTracker';
@@ -41,9 +43,44 @@ import {
 
 const isSmokeTest = process.argv.includes('--smoke-test');
 
+function checkIsDevEdition(): boolean {
+  if (
+    process.argv.includes('--dev') ||
+    process.argv.includes('--dev-edition') ||
+    process.env.DEV_EDITION === '1'
+  ) {
+    return true;
+  }
+  const candidates = [
+    path.join(app.getAppPath(), 'data', 'dev-edition.json'),
+    path.join(app.getAppPath(), 'dist', 'data', 'dev-edition.json'),
+    path.join(process.cwd(), 'data', 'dev-edition.json'),
+    path.join(process.cwd(), 'dist', 'data', 'dev-edition.json'),
+  ];
+  for (const c of candidates) {
+    if (fs.existsSync(c)) {
+      try {
+        const parsed = JSON.parse(fs.readFileSync(c, 'utf8'));
+        if (parsed.isDevEdition === true) {
+          return true;
+        }
+      } catch {
+        // ignore
+      }
+    }
+  }
+  return false;
+}
+
+const isDevEdition = checkIsDevEdition();
+
 // Identifiant AppUserModelId requis sur Windows 10/11 pour les notifications Toast natives
 if (process.platform === 'win32') {
-  app.setAppUserModelId('com.tamagotchi.desktoppet');
+  app.setAppUserModelId(
+    isDevEdition
+      ? 'com.tamagotchi.desktoppet.devedition'
+      : 'com.tamagotchi.desktoppet'
+  );
 }
 
 let mainWindow: BrowserWindow | null = null;
@@ -129,6 +166,7 @@ function registerIpcHandlers(): void {
       cosmetics: cosmeticsCatalog,
       offlineReport: initialOfflineReport,
       displays: getDisplaysInfo(),
+      isDevEdition,
     };
   });
 
@@ -389,6 +427,7 @@ if (!gotSingleInstanceLock) {
       onQuit: () => {
         saveToDiskAtomically(currentSaveData);
       },
+      isDevEdition,
     });
     trayManager.init();
 

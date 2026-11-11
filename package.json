@@ -16,7 +16,8 @@
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "test:watch": "vitest",
-    "dist:win": "npm run build && electron-builder --win --x64"
+    "dist:win": "npm run build && electron-builder --win --x64",
+    "dist:all": "node scripts/package-dual-editions.mjs"
   },
   "build": {
     "appId": "com.tamagotchi.desktoppet",

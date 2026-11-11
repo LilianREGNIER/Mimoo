@@ -168,6 +168,14 @@
           <span class="action-emoji">📊</span>
           <span class="action-label">Stats & Régl.</span>
         </button>
+        <button
+          id="btn-action-sandbox"
+          class="action-btn action-btn-sandbox hidden"
+          title="Ouvrir le Menu Spécial Test & Sandbox (F2)"
+        >
+          <span class="action-emoji">🧪</span>
+          <span class="action-label">Test / Labo (F2)</span>
+        </button>
       </div>
     </section>
 
@@ -370,6 +378,126 @@
               <button type="button" id="btn-reset-pet" class="btn-danger">Nouvel Œuf 🥚</button>
             </div>
           </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Fenêtre Menu Spécial Test & Sandbox (#sandbox-modal) -->
+    <section
+      id="sandbox-modal"
+      class="glass-panel sandbox-modal-panel ui-interactive hidden"
+      aria-label="Menu Spécial Test et Sandbox"
+    >
+      <header class="modal-header">
+        <div class="modal-title-group">
+          <h2 class="modal-title">🧪 Menu Spécial Test & Sandbox</h2>
+          <span class="modal-subtitle">
+            Testez l'éclosion, l'éponge, les animations de besoins et les 19 formes en 1 clic
+          </span>
+        </div>
+        <button id="btn-close-sandbox" class="icon-close-btn" title="Fermer (Échap / F2)">✕</button>
+      </header>
+
+      <div class="sandbox-body">
+        <!-- 4) Suivi Marathon & Activité PC en temps réel -->
+        <div class="sandbox-section">
+          <h3 class="sandbox-section-title">⏱️ Suivi Marathon & Activité PC en temps réel</h3>
+          <div class="sandbox-metrics-grid">
+            <div class="sandbox-metric-pill">
+              <span class="metric-label">🖱️ Clics souris PC</span>
+              <strong id="sb-pc-clicks">0</strong>
+            </div>
+            <div class="sandbox-metric-pill">
+              <span class="metric-label">⌨️ Touches clavier PC</span>
+              <strong id="sb-pc-keys">0</strong>
+            </div>
+            <div class="sandbox-metric-pill">
+              <span class="metric-label">⚡ Temps actif PC</span>
+              <strong id="sb-pc-active">0 s</strong>
+            </div>
+            <div class="sandbox-metric-pill">
+              <span class="metric-label">🫧 Actions de soin</span>
+              <strong id="sb-care-total">0</strong>
+            </div>
+            <div class="sandbox-metric-pill">
+              <span class="metric-label">🥚 Clics sur l'œuf</span>
+              <strong id="sb-egg-clicks">0 / 5</strong>
+            </div>
+            <div class="sandbox-metric-pill">
+              <span class="metric-label">⏳ Âge cumulé</span>
+              <strong id="sb-pet-age">0 s</strong>
+            </div>
+          </div>
+        </div>
+
+        <!-- 1) Recommencer / Choisir un Starter -->
+        <div class="sandbox-section">
+          <h3 class="sandbox-section-title">1) Recommencer / Choisir un Starter</h3>
+          <div class="sandbox-buttons-grid">
+            <button type="button" id="btn-sb-starter-egg" class="sandbox-btn">
+              🥚 Nouvel Œuf (0/5 clics)
+            </button>
+            <button type="button" id="btn-sb-starter-aqua" class="sandbox-btn lineage-aqua">
+              💧 Starter Eau : P'tit Goutte
+            </button>
+            <button type="button" id="btn-sb-starter-flora" class="sandbox-btn lineage-flora">
+              🌱 Starter Plante : P'tit Bourgeon
+            </button>
+            <button type="button" id="btn-sb-starter-ember" class="sandbox-btn lineage-ember">
+              🔥 Starter Feu : P'tite Braise
+            </button>
+            <button type="button" id="btn-sb-starter-random" class="sandbox-btn sandbox-btn-accent">
+              🎲 Éclosion Starter Aléatoire immédiate
+            </button>
+          </div>
+        </div>
+
+        <!-- 3) Simuler les Besoins & Animations à la demande -->
+        <div class="sandbox-section">
+          <h3 class="sandbox-section-title">2) Simuler les Besoins & Animations à la demande</h3>
+          <div class="sandbox-buttons-grid">
+            <button type="button" id="btn-sb-sim-hungry" class="sandbox-btn">
+              🍖 Simuler Faim
+            </button>
+            <button type="button" id="btn-sb-sim-dirty" class="sandbox-btn">
+              🧽 Simuler Saleté (+ activer besoin d'éponge)
+            </button>
+            <button type="button" id="btn-sb-sim-cuddle" class="sandbox-btn">
+              🤗 Simuler Besoin de Câlin
+            </button>
+            <button type="button" id="btn-sb-sim-play" class="sandbox-btn">
+              🎾 Simuler Besoin de Jouer
+            </button>
+            <button type="button" id="btn-sb-sim-tired" class="sandbox-btn">
+              💤 Simuler Fatigue
+            </button>
+            <button type="button" id="btn-sb-sim-marathon" class="sandbox-btn sandbox-btn-accent">
+              ⌨️ Boost Marathon (+15 000 clics/touches PC & +40h)
+            </button>
+            <button type="button" id="btn-sb-add-coins" class="sandbox-btn sandbox-btn-coins">
+              🪙 +1 000 TamaCoins (Boutique)
+            </button>
+            <button type="button" id="btn-sb-sim-restore" class="sandbox-btn sandbox-btn-success">
+              ✨ Tout restaurer à 100%
+            </button>
+          </div>
+        </div>
+
+        <!-- 2) Évoluer librement vers n'importe quelle forme (les 19 formes) -->
+        <div class="sandbox-section">
+          <div class="sandbox-section-header-row">
+            <h3 class="sandbox-section-title">
+              3) Évoluer librement vers n'importe quelle forme (les 19 formes)
+            </h3>
+            <button
+              type="button"
+              id="btn-sb-force-evolve"
+              class="sandbox-btn sandbox-btn-evolve-next"
+            >
+              ⚡ Forcer l'évolution suivante de la lignée actuelle
+            </button>
+          </div>
+          <div id="sandbox-lineages-container" class="sandbox-lineages-container"></div>
         </div>
       </div>
     </section>

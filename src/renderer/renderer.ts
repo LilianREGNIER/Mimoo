@@ -26,6 +26,7 @@ import {
   type MiniGameResult,
   type NeedKey,
   type PetState,
+  type SandboxConditionType,
   type SpeciesFormDefinition,
   type StarterFormId,
   type TrayActionType,
@@ -142,8 +143,10 @@ class DesktopPetRendererApp {
   private readonly drawerFoodsEl = document.getElementById('drawer-foods');
   private readonly drawerGamesEl = document.getElementById('drawer-games');
   private readonly statsModalEl = document.getElementById('stats-modal');
+  private readonly sandboxModalEl = document.getElementById('sandbox-modal');
   private readonly shopModalEl = document.getElementById('shop-modal');
   private readonly onlineModalEl = document.getElementById('online-modal');
+  private isDevEdition = false;
 
   // Dialogues spontanés ("de temps en temps, juste comme ça")
   private lastAutonomousDialogueTimestamp = performance.now();
@@ -269,9 +272,11 @@ class DesktopPetRendererApp {
     this.syncSettingsControls();
     this.initDraggableShopModal();
     this.bindPointerAndDomEvents();
+    this.bindSandboxEvents();
     this.bindIpcListeners();
 
     this.refreshHudUI();
+    this.setDevEdition(Boolean(payload.isDevEdition));
     this.hitTester.evaluateAt(-1000, -1000);
 
     // Message d'accueil selon le stade (œuf à éclore ou familier éclos)
@@ -446,6 +451,9 @@ class DesktopPetRendererApp {
     if (!this.statsModalEl?.classList.contains('hidden')) {
       this.refreshStatsAndCompendiumUI();
     }
+    if (this.isDevEdition && !this.sandboxModalEl?.classList.contains('hidden')) {
+      this.refreshSandboxMetricsUI();
+    }
 
     const pet = tickResult.pet;
 
@@ -456,7 +464,8 @@ class DesktopPetRendererApp {
       !this.drawerGamesEl?.classList.contains('hidden') ||
       !this.statsModalEl?.classList.contains('hidden') ||
       !this.shopModalEl?.classList.contains('hidden') ||
-      !this.onlineModalEl?.classList.contains('hidden');
+      !this.onlineModalEl?.classList.contains('hidden') ||
+      !this.sandboxModalEl?.classList.contains('hidden');
 
     const canSpeakSpontaneously =
       pet.stage !== 'egg' &&
@@ -666,6 +675,16 @@ class DesktopPetRendererApp {
           this.stopSpongeMode();
         }
         this.closeAllPanels();
+      } else if (e.key === 'F2') {
+        if (this.isDevEdition) {
+          this.toggleSandboxModal();
+        }
+      } else if (e.ctrlKey && e.shiftKey && (e.key === 'D' || e.key === 'd')) {
+        this.setDevEdition(!this.isDevEdition);
+        this.showSpeechBubble(
+          this.isDevEdition ? '🧪 Mode Développeur / Sandbox ACTIVÉ' : 'Mode Développeur DÉSACTIVÉ',
+          2500
+        );
       }
     });
 
@@ -835,6 +854,10 @@ class DesktopPetRendererApp {
       this.openStatsModal('tab-stats');
     });
 
+    document.getElementById('btn-action-sandbox')?.addEventListener('click', () => {
+      this.openSandboxModal();
+    });
+
     // Lancement des 2 mini-jeux
     document.getElementById('btn-start-star-catch')?.addEventListener('click', () => {
       if (!this.canStartMiniGame()) {
@@ -950,6 +973,9 @@ class DesktopPetRendererApp {
       if (!this.statsModalEl?.classList.contains('hidden')) {
         this.refreshStatsAndCompendiumUI();
       }
+      if (this.isDevEdition && !this.sandboxModalEl?.classList.contains('hidden')) {
+        this.refreshSandboxMetricsUI();
+      }
     });
   }
 
@@ -1002,6 +1028,8 @@ class DesktopPetRendererApp {
         this.openStatsModal('tab-compendium');
         break;
       case 'open-sandbox':
+        this.setDevEdition(true);
+        this.openSandboxModal();
         break;
       case 'center-pet':
         this.petActor.centerOnScreen();
@@ -1590,6 +1618,12 @@ class DesktopPetRendererApp {
     if (this.onlineModalEl && !this.onlineModalEl.classList.contains('hidden')) {
       this.refreshOnlineUI();
     }
+    if (this.isDevEdition) {
+      this.refreshSandboxMetricsUI();
+      if (!this.sandboxModalEl?.classList.contains('hidden')) {
+        this.renderSandboxLineagesGrid();
+      }
+    }
   }
 
   private getTotalCareActions(pet: PetState): number {
@@ -1720,6 +1754,7 @@ class DesktopPetRendererApp {
     this.statsModalEl?.classList.add('hidden');
     this.shopModalEl?.classList.add('hidden');
     this.onlineModalEl?.classList.add('hidden');
+    this.sandboxModalEl?.classList.add('hidden');
     this.hitTester.refresh();
   }
 
@@ -1776,6 +1811,7 @@ class DesktopPetRendererApp {
     this.hideHudPanel();
     this.statsModalEl?.classList.add('hidden');
     this.onlineModalEl?.classList.add('hidden');
+    this.sandboxModalEl?.classList.add('hidden');
     this.petActor.stopWalking();
 
     if (this.shopModalEl) {
@@ -1995,6 +2031,7 @@ class DesktopPetRendererApp {
     this.petActor.stopWalking();
     this.statsModalEl?.classList.add('hidden');
     this.shopModalEl?.classList.add('hidden');
+    this.sandboxModalEl?.classList.add('hidden');
     this.refreshOnlineUI();
     this.onlineModalEl?.classList.remove('hidden');
     this.hitTester.refresh();
@@ -2056,6 +2093,7 @@ class DesktopPetRendererApp {
     this.petActor.stopWalking();
     this.shopModalEl?.classList.add('hidden');
     this.onlineModalEl?.classList.add('hidden');
+    this.sandboxModalEl?.classList.add('hidden');
     this.refreshStatsAndCompendiumUI();
     this.syncSettingsControls();
     this.switchModalTab(initialTabId);
@@ -2403,6 +2441,317 @@ class DesktopPetRendererApp {
       this.speechBubbleEl.style.left = `${bubbleX}px`;
       this.speechBubbleEl.style.top = `${bubbleY}px`;
     }
+  }
+
+  public setDevEdition(enabled: boolean): void {
+    this.isDevEdition = enabled;
+    const btn = document.getElementById('btn-action-sandbox');
+    if (btn) {
+      if (enabled) {
+        btn.classList.remove('hidden');
+      } else {
+        btn.classList.add('hidden');
+      }
+    }
+    if (enabled) {
+      this.renderSandboxLineagesGrid();
+      this.refreshSandboxMetricsUI();
+    }
+  }
+
+  private openSandboxModal(): void {
+    this.hideHudPanel();
+    this.petActor.stopWalking();
+    this.statsModalEl?.classList.add('hidden');
+    this.shopModalEl?.classList.add('hidden');
+    this.onlineModalEl?.classList.add('hidden');
+    this.refreshSandboxMetricsUI();
+    this.renderSandboxLineagesGrid();
+    this.sandboxModalEl?.classList.remove('hidden');
+    this.hitTester.refresh();
+  }
+
+  private closeSandboxModal(): void {
+    this.sandboxModalEl?.classList.add('hidden');
+    this.hitTester.refresh();
+  }
+
+  private toggleSandboxModal(): void {
+    if (this.sandboxModalEl?.classList.contains('hidden')) {
+      this.openSandboxModal();
+    } else {
+      this.closeSandboxModal();
+    }
+  }
+
+  private applySandboxForm(formId: FormId, customSpeech?: string): void {
+    this.engine.forceSetForm(formId, Date.now());
+    const formDef = this.engine.getCurrentSpeciesForm();
+    if (formDef) {
+      const userScale = this.engine.getSaveData().settings.petScale ?? 1;
+      this.petActor.setScales(formDef.scale, userScale);
+      this.petActor.setWalkSpeed(formDef.walkSpeed);
+    }
+    this.animator.spawnParticles('sparkle', this.petActor.x, this.petActor.y, 10);
+    this.animator.spawnParticles('star', this.petActor.x, this.petActor.y, 6);
+    this.animator.setState('happy', 2500);
+
+    const speech =
+      customSpeech ||
+      `Transformation Sandbox : je suis devenu ${formDef?.name ?? formId} ! 🧪✨`;
+    this.showSpeechBubble(speech, 3500);
+
+    this.refreshAllPanelsUI();
+    void this.persistSaveState();
+  }
+
+  private runSandboxSimulation(type: SandboxConditionType, speechMsg: string): void {
+    this.engine.simulateCondition(type, Date.now());
+
+    switch (type) {
+      case 'dirty':
+        this.animator.spawnParticles('crumb', this.petActor.x, this.petActor.y, 10);
+        this.animator.setState('sad', 3000);
+        break;
+      case 'hungry':
+        this.animator.spawnParticles('crumb', this.petActor.x, this.petActor.y, 8);
+        this.animator.setState('sad', 3000);
+        break;
+      case 'need_cuddle':
+        this.animator.spawnParticles('heart', this.petActor.x, this.petActor.y, 8);
+        this.animator.setState('sad', 3000);
+        break;
+      case 'need_play':
+        this.animator.spawnParticles('tennis', this.petActor.x, this.petActor.y, 6);
+        this.animator.setState('idle', 1000);
+        break;
+      case 'tired':
+        this.animator.spawnParticles('zzz', this.petActor.x, this.petActor.y, 6);
+        this.animator.setState('sleep', 4000);
+        break;
+      case 'full_restore':
+        this.animator.spawnParticles('sparkle', this.petActor.x, this.petActor.y, 12);
+        this.animator.spawnParticles('confetti', this.petActor.x, this.petActor.y, 8);
+        this.animator.setState('happy', 3000);
+        break;
+      case 'boost_marathon':
+        this.animator.spawnParticles('keyboard', this.petActor.x, this.petActor.y, 8);
+        this.animator.spawnParticles('star', this.petActor.x, this.petActor.y, 10);
+        this.animator.setState('happy', 3000);
+        break;
+      case 'add_coins':
+        this.animator.spawnParticles('sparkle', this.petActor.x, this.petActor.y, 8);
+        this.animator.setState('happy', 2500);
+        break;
+    }
+
+    this.showSpeechBubble(speechMsg, 3500);
+    this.refreshAllPanelsUI();
+    void this.persistSaveState();
+  }
+
+  private refreshSandboxMetricsUI(): void {
+    const pet = this.engine.getState();
+    const stats = pet.careStats;
+
+    const clicksEl = document.getElementById('sb-pc-clicks');
+    if (clicksEl) clicksEl.textContent = (stats.pcMouseClicks ?? 0).toLocaleString('fr-FR');
+
+    const keysEl = document.getElementById('sb-pc-keys');
+    if (keysEl) keysEl.textContent = (stats.pcKeyPresses ?? 0).toLocaleString('fr-FR');
+
+    const activeEl = document.getElementById('sb-pc-active');
+    if (activeEl) {
+      const sec = Math.round(stats.pcActiveSeconds ?? 0);
+      if (sec < 60) {
+        activeEl.textContent = `${sec} s`;
+      } else if (sec < 3600) {
+        activeEl.textContent = `${Math.floor(sec / 60)}m ${sec % 60}s`;
+      } else {
+        const h = Math.floor(sec / 3600);
+        const m = Math.floor((sec % 3600) / 60);
+        activeEl.textContent = `${h}h ${m}m`;
+      }
+    }
+
+    const careEl = document.getElementById('sb-care-total');
+    if (careEl) careEl.textContent = String(this.getTotalCareActions(pet));
+
+    const eggEl = document.getElementById('sb-egg-clicks');
+    if (eggEl) {
+      const required = this.engine.getConfig().eggClicksRequired || 5;
+      eggEl.textContent = `${stats.eggClicks ?? 0} / ${required}`;
+    }
+
+    const ageEl = document.getElementById('sb-pet-age');
+    if (ageEl) {
+      const sec = Math.round(pet.ageSeconds);
+      if (sec < 60) {
+        ageEl.textContent = `${sec} s`;
+      } else if (sec < 3600) {
+        ageEl.textContent = `${Math.floor(sec / 60)} min`;
+      } else {
+        const h = Math.floor(sec / 3600);
+        const m = Math.floor((sec % 3600) / 60);
+        ageEl.textContent = `${h}h ${m}m`;
+      }
+    }
+  }
+
+  private renderSandboxLineagesGrid(): void {
+    const container = document.getElementById('sandbox-lineages-container');
+    if (!container) return;
+    container.innerHTML = '';
+
+    const pet = this.engine.getState();
+    const allSpecies = this.engine.getSpecies();
+
+    const lineageGroups: { id: LineageId; title: string; forms: SpeciesFormDefinition[] }[] = [
+      {
+        id: 'none',
+        title: '🥚 Stade Origine (Œuf)',
+        forms: allSpecies.filter((s) => s.lineage === 'none' || s.id === 'egg'),
+      },
+      {
+        id: 'aqua',
+        title: "💧 Lignée Aquatique (P'tit Goutte)",
+        forms: allSpecies.filter((s) => s.lineage === 'aqua' && s.id !== 'egg'),
+      },
+      {
+        id: 'flora',
+        title: "🌱 Lignée Végétale (P'tit Bourgeon)",
+        forms: allSpecies.filter((s) => s.lineage === 'flora' && s.id !== 'egg'),
+      },
+      {
+        id: 'ember',
+        title: "🔥 Lignée Embrasée (P'tite Braise)",
+        forms: allSpecies.filter((s) => s.lineage === 'ember' && s.id !== 'egg'),
+      },
+    ];
+
+    for (const group of lineageGroups) {
+      if (group.forms.length === 0) continue;
+
+      const groupDiv = document.createElement('div');
+      groupDiv.className = 'lineage-group';
+
+      const titleDiv = document.createElement('div');
+      titleDiv.className = 'lineage-group-title';
+      titleDiv.textContent = group.title;
+      groupDiv.appendChild(titleDiv);
+
+      const gridDiv = document.createElement('div');
+      gridDiv.className = 'lineage-forms-grid';
+
+      for (const form of group.forms) {
+        const isCurrent = pet.formId === form.id;
+        const card = document.createElement('div');
+        card.className = `sandbox-form-card${isCurrent ? ' active-form' : ''}`;
+
+        const leftDiv = document.createElement('div');
+        leftDiv.className = 'sandbox-form-left';
+
+        const canvas = document.createElement('canvas');
+        canvas.width = 34;
+        canvas.height = 34;
+        canvas.className = 'sandbox-thumb-canvas';
+        this.animator.drawFormThumbnail(canvas, form.id);
+        leftDiv.appendChild(canvas);
+
+        const metaDiv = document.createElement('div');
+        metaDiv.className = 'sandbox-form-meta';
+        metaDiv.innerHTML = `
+          <span class="sandbox-form-name">${form.name}${isCurrent ? ' (Actuel)' : ''}</span>
+          <span class="sandbox-form-stage">${STAGE_LABELS[form.stage] ?? form.stage}</span>
+        `;
+        leftDiv.appendChild(metaDiv);
+        card.appendChild(leftDiv);
+
+        const btn = document.createElement('button');
+        btn.type = 'button';
+        btn.className = 'sandbox-transform-btn';
+        btn.textContent = isCurrent ? 'Actif' : 'Choisir';
+        btn.dataset.formId = form.id;
+        btn.addEventListener('click', (e) => {
+          e.stopPropagation();
+          this.applySandboxForm(form.id);
+        });
+
+        card.appendChild(btn);
+        card.addEventListener('click', () => {
+          this.applySandboxForm(form.id);
+        });
+
+        gridDiv.appendChild(card);
+      }
+
+      groupDiv.appendChild(gridDiv);
+      container.appendChild(groupDiv);
+    }
+  }
+
+  private bindSandboxEvents(): void {
+    // Bouton de fermeture
+    document.getElementById('btn-close-sandbox')?.addEventListener('click', () => {
+      this.closeSandboxModal();
+    });
+
+    // 1) Starters
+    document.getElementById('btn-sb-starter-egg')?.addEventListener('click', () => {
+      this.applySandboxForm('egg', "🥚 Réinitialisé en œuf ! Cliquez 5 fois dessus pour le faire éclore !");
+    });
+    document.getElementById('btn-sb-starter-aqua')?.addEventListener('click', () => {
+      this.applySandboxForm('baby_aqua', "💧 Starter Eau sélectionné : P'tit Goutte !");
+    });
+    document.getElementById('btn-sb-starter-flora')?.addEventListener('click', () => {
+      this.applySandboxForm('baby_flora', "🌱 Starter Plante sélectionné : P'tit Bourgeon !");
+    });
+    document.getElementById('btn-sb-starter-ember')?.addEventListener('click', () => {
+      this.applySandboxForm('baby_ember', "🔥 Starter Feu sélectionné : P'tite Braise !");
+    });
+    document.getElementById('btn-sb-starter-random')?.addEventListener('click', () => {
+      const idx = Math.floor(Math.random() * STARTER_FORM_IDS.length);
+      const randomStarter = STARTER_FORM_IDS[idx] || 'baby_aqua';
+      this.applySandboxForm(randomStarter, "🎲 Éclosion aléatoire immédiate !");
+    });
+
+    // 2) Simulations de besoins
+    document.getElementById('btn-sb-sim-hungry')?.addEventListener('click', () => {
+      this.runSandboxSimulation('hungry', "🍖 Faim simulée (15%) ! Le familier réclame à manger !");
+    });
+    document.getElementById('btn-sb-sim-dirty')?.addEventListener('click', () => {
+      this.runSandboxSimulation('dirty', "🧽 Saleté simulée (15% + 3 crottes) ! L'éponge est prête !");
+    });
+    document.getElementById('btn-sb-sim-cuddle')?.addEventListener('click', () => {
+      this.runSandboxSimulation('need_cuddle', "🤗 Demande de câlin activée !");
+    });
+    document.getElementById('btn-sb-sim-play')?.addEventListener('click', () => {
+      this.runSandboxSimulation('need_play', "🎾 Demande de jeu activée !");
+    });
+    document.getElementById('btn-sb-sim-tired')?.addEventListener('click', () => {
+      this.runSandboxSimulation('tired', "💤 Fatigue simulée (12% énergie) !");
+    });
+    document.getElementById('btn-sb-sim-marathon')?.addEventListener('click', () => {
+      this.runSandboxSimulation('boost_marathon', "⌨️ Boost marathon appliqué : +15 000 clics/touches PC & +40h !");
+    });
+    document.getElementById('btn-sb-add-coins')?.addEventListener('click', () => {
+      this.runSandboxSimulation('add_coins', "🪙 +1 000 TamaCoins ajoutés à votre tirelire !");
+    });
+    document.getElementById('btn-sb-sim-restore')?.addEventListener('click', () => {
+      this.runSandboxSimulation('full_restore', "✨ Toutes les jauges ont été restaurées à 100% !");
+    });
+
+    // 3) Évolution forcée
+    document.getElementById('btn-sb-force-evolve')?.addEventListener('click', () => {
+      const res = this.engine.forceEvolve(undefined, Date.now());
+      if (res.evolved && res.newForm) {
+        this.handleEvolutionTriggered(res.newForm);
+        this.refreshAllPanelsUI();
+        void this.persistSaveState();
+      } else {
+        this.showSpeechBubble("Aucune évolution ultérieure pour cette forme !", 3000);
+      }
+    });
   }
 
   private async persistSaveState(): Promise<void> {

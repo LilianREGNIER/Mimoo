@@ -44,6 +44,7 @@ export interface TrayManagerCallbacks {
   getSaveData: () => SaveDataV1;
   onUpdateSettings: (partial: Partial<UserSettings>) => void;
   onQuit: () => void;
+  isDevEdition?: boolean;
 }
 
 export class TrayManager {
@@ -134,6 +135,14 @@ export class TrayManager {
         label: 'Statistiques & Réglages',
         click: () => this.sendTrayAction('open-compendium'),
       },
+      ...(this.callbacks.isDevEdition
+        ? [
+            {
+              label: '🧪 Menu Test / Sandbox',
+              click: () => this.sendTrayAction('open-sandbox' as TrayActionType),
+            },
+          ]
+        : []),
       {
         label: 'Recentrer le familier',
         click: () => this.sendTrayAction('center-pet'),

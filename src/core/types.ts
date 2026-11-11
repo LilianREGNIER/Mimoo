@@ -397,6 +397,8 @@ export interface BootstrapPayload {
   offlineReport: OfflineCatchupReport;
   /** Liste des écrans détectés. */
   displays: DisplayBoundsInfo[];
+  /** Indique si l'application est exécutée en édition Développeur / Sandbox. */
+  isDevEdition?: boolean;
 }
 
 /**
