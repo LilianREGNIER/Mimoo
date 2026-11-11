@@ -118,6 +118,109 @@ export const ALL_FORMS: readonly FormId[] = [
   'adult_ember_eclipse',
 ];
 
+export interface FormCosmeticAnchor {
+  hatOffset: { x: number; y: number; scale?: number };
+  accOffset: { x: number; y: number; scale?: number };
+  auraRadius?: number;
+}
+
+/**
+ * Coordonnées d'ancrage précises (en unités de pixels du sprite 32x32) pour que les chapeaux,
+ * accessoires (lunettes, blush...) et auras s'ajustent parfaitement à l'anatomie de chaque pet.
+ */
+export const COSMETIC_ANCHORS: Record<string, FormCosmeticAnchor> = {
+  baby_aqua: {
+    hatOffset: { x: 0, y: -7.5, scale: 0.85 },
+    accOffset: { x: 0, y: 1.0, scale: 0.88 },
+    auraRadius: 18,
+  },
+  baby_flora: {
+    hatOffset: { x: 0, y: -7.2, scale: 0.85 },
+    accOffset: { x: 0, y: 0.2, scale: 0.88 },
+    auraRadius: 18,
+  },
+  baby_ember: {
+    hatOffset: { x: 0, y: -8.5, scale: 0.85 },
+    accOffset: { x: 0, y: 0.0, scale: 0.88 },
+    auraRadius: 18,
+  },
+  child_aqua: {
+    hatOffset: { x: 0, y: -8.0, scale: 0.95 },
+    accOffset: { x: 0, y: -1.0, scale: 0.95 },
+    auraRadius: 22,
+  },
+  child_flora: {
+    hatOffset: { x: 1.2, y: -9.8, scale: 0.92 },
+    accOffset: { x: 1.2, y: -4.0, scale: 0.92 },
+    auraRadius: 22,
+  },
+  child_ember: {
+    hatOffset: { x: 0, y: -8.8, scale: 0.92 },
+    accOffset: { x: 0, y: -1.0, scale: 0.92 },
+    auraRadius: 22,
+  },
+  adult_aqua_coral: {
+    hatOffset: { x: 0, y: -9.5, scale: 0.95 },
+    accOffset: { x: 0, y: -3.0, scale: 0.92 },
+    auraRadius: 25,
+  },
+  adult_aqua_leviathan: {
+    hatOffset: { x: 0, y: -11.5, scale: 1.0 },
+    accOffset: { x: 0, y: -5.8, scale: 1.05 },
+    auraRadius: 27,
+  },
+  adult_aqua_pearl: {
+    hatOffset: { x: 0, y: -9.8, scale: 1.05 },
+    accOffset: { x: 0, y: 1.0, scale: 1.05 },
+    auraRadius: 26,
+  },
+  adult_aqua_abyss: {
+    hatOffset: { x: 0, y: -9.2, scale: 1.0 },
+    accOffset: { x: 0, y: -1.0, scale: 1.05 },
+    auraRadius: 26,
+  },
+  adult_flora_bloom: {
+    hatOffset: { x: 0, y: -9.5, scale: 0.92 },
+    accOffset: { x: 0, y: -3.0, scale: 0.95 },
+    auraRadius: 26,
+  },
+  adult_flora_raptor: {
+    hatOffset: { x: 1.5, y: -10.2, scale: 0.95 },
+    accOffset: { x: 1.5, y: -4.0, scale: 0.95 },
+    auraRadius: 26,
+  },
+  adult_flora_truffle: {
+    hatOffset: { x: 0, y: -10.2, scale: 1.15 },
+    accOffset: { x: 0, y: -1.0, scale: 1.0 },
+    auraRadius: 26,
+  },
+  adult_flora_thorn: {
+    hatOffset: { x: 0, y: -10.0, scale: 1.0 },
+    accOffset: { x: 0, y: -2.0, scale: 0.95 },
+    auraRadius: 26,
+  },
+  adult_ember_solar: {
+    hatOffset: { x: 0, y: -10.8, scale: 0.95 },
+    accOffset: { x: 0, y: -4.0, scale: 0.92 },
+    auraRadius: 26,
+  },
+  adult_ember_comet: {
+    hatOffset: { x: 0, y: -10.0, scale: 1.0 },
+    accOffset: { x: 0, y: 0.0, scale: 1.0 },
+    auraRadius: 26,
+  },
+  adult_ember_magma: {
+    hatOffset: { x: 0, y: -10.5, scale: 1.15 },
+    accOffset: { x: 0, y: -3.0, scale: 1.05 },
+    auraRadius: 28,
+  },
+  adult_ember_eclipse: {
+    hatOffset: { x: 0, y: -10.0, scale: 0.95 },
+    accOffset: { x: 0, y: -1.0, scale: 0.95 },
+    auraRadius: 26,
+  },
+};
+
 const FALLBACK_COLORS: Record<FormId, string> = {
   egg: '#fde047',
   baby_aqua: '#38bdf8',
@@ -596,6 +699,13 @@ export class SpriteAnimator {
       this.renderPoops(ctx, x, shadowY - 6, halfSize, poopCount);
     }
 
+    const anchor = COSMETIC_ANCHORS[formId] ?? {
+      hatOffset: { x: 0, y: -8.5, scale: 1.0 },
+      accOffset: { x: 0, y: -0.5, scale: 1.0 },
+      auraRadius: 24,
+    };
+    const pixelUnit = drawSize / 32;
+
     // 2.5 Aura cosmétique équipée (dessinée derrière le familier)
     if (formId !== 'egg' && params.equippedCosmetics?.aura) {
       this.renderAuraCosmetic(
@@ -603,7 +713,7 @@ export class SpriteAnimator {
         renderX,
         renderY,
         params.equippedCosmetics.aura,
-        halfSize
+        (anchor.auraRadius ?? 24) * (drawSize / 40)
       );
     }
 
@@ -682,22 +792,28 @@ export class SpriteAnimator {
 
     // 5.5 Accessoire et Chapeau cosmétiques équipés (dessinés par-dessus le familier)
     if (formId !== 'egg' && params.equippedCosmetics?.accessory) {
+      const accX = renderX + (flipX ? -anchor.accOffset.x : anchor.accOffset.x) * pixelUnit;
+      const accY = renderY + anchor.accOffset.y * pixelUnit;
+      const accScale = scale * (anchor.accOffset.scale ?? 1.0);
       this.renderAccessoryCosmetic(
         ctx,
-        renderX,
-        renderY - halfSize * 0.1,
+        accX,
+        accY,
         params.equippedCosmetics.accessory,
-        scale,
+        accScale,
         flipX
       );
     }
     if (formId !== 'egg' && params.equippedCosmetics?.hat) {
+      const hatX = renderX + (flipX ? -anchor.hatOffset.x : anchor.hatOffset.x) * pixelUnit;
+      const hatY = renderY + anchor.hatOffset.y * pixelUnit;
+      const hatScale = scale * (anchor.hatOffset.scale ?? 1.0);
       this.renderHatCosmetic(
         ctx,
-        renderX,
-        renderY - halfSize * 0.72,
+        hatX,
+        hatY,
         params.equippedCosmetics.hat,
-        scale,
+        hatScale,
         flipX
       );
     }
@@ -1135,23 +1251,23 @@ export class SpriteAnimator {
     ctx.textBaseline = 'bottom';
 
     if (hatId === 'hat_crown') {
-      ctx.font = `${Math.round(24 * s)}px "Segoe UI Emoji", sans-serif`;
-      ctx.fillText('👑', 0, 8 * s);
+      ctx.font = `${Math.round(22 * s)}px "Segoe UI Emoji", sans-serif`;
+      ctx.fillText('👑', 0, 1 * s);
     } else if (hatId === 'hat_tophat') {
-      ctx.font = `${Math.round(24 * s)}px "Segoe UI Emoji", sans-serif`;
-      ctx.fillText('🎩', 0, 6 * s);
+      ctx.font = `${Math.round(22 * s)}px "Segoe UI Emoji", sans-serif`;
+      ctx.fillText('🎩', 0, 0);
     } else if (hatId === 'hat_bow') {
-      ctx.font = `${Math.round(22 * s)}px "Segoe UI Emoji", sans-serif`;
-      ctx.fillText('🎀', 0, 8 * s);
+      ctx.font = `${Math.round(20 * s)}px "Segoe UI Emoji", sans-serif`;
+      ctx.fillText('🎀', 0, 1 * s);
     } else if (hatId === 'hat_wizard') {
-      ctx.font = `${Math.round(26 * s)}px "Segoe UI Emoji", sans-serif`;
-      ctx.fillText('🧙‍♂️', 0, 8 * s);
+      ctx.font = `${Math.round(24 * s)}px "Segoe UI Emoji", sans-serif`;
+      ctx.fillText('🧙‍♂️', 0, 1 * s);
     } else if (hatId === 'hat_cap') {
-      ctx.font = `${Math.round(22 * s)}px "Segoe UI Emoji", sans-serif`;
-      ctx.fillText('🧢', 0, 6 * s);
+      ctx.font = `${Math.round(20 * s)}px "Segoe UI Emoji", sans-serif`;
+      ctx.fillText('🧢', 0, 0);
     } else if (hatId === 'hat_halo') {
-      ctx.font = `${Math.round(22 * s)}px "Segoe UI Emoji", sans-serif`;
-      ctx.fillText('😇', 0, 2 * s);
+      ctx.font = `${Math.round(20 * s)}px "Segoe UI Emoji", sans-serif`;
+      ctx.fillText('😇', 0, -3 * s);
     }
     ctx.restore();
   }
@@ -1175,18 +1291,18 @@ export class SpriteAnimator {
     ctx.textBaseline = 'middle';
 
     if (accId === 'acc_sunglasses') {
-      ctx.font = `${Math.round(22 * s)}px "Segoe UI Emoji", sans-serif`;
+      ctx.font = `${Math.round(20 * s)}px "Segoe UI Emoji", sans-serif`;
       ctx.fillText('🕶️', 0, 0);
     } else if (accId === 'acc_monocle') {
-      ctx.font = `${Math.round(20 * s)}px "Segoe UI Emoji", sans-serif`;
-      ctx.fillText('🧐', 0, 0);
+      ctx.font = `${Math.round(18 * s)}px "Segoe UI Emoji", sans-serif`;
+      ctx.fillText('🧐', 1 * s, 0);
     } else if (accId === 'acc_star_glasses') {
-      ctx.font = `${Math.round(22 * s)}px "Segoe UI Emoji", sans-serif`;
+      ctx.font = `${Math.round(20 * s)}px "Segoe UI Emoji", sans-serif`;
       ctx.fillText('🤩', 0, 0);
     } else if (accId === 'acc_blush_hearts') {
-      ctx.font = `${Math.round(14 * s)}px "Segoe UI Emoji", sans-serif`;
-      ctx.fillText('💖', -14 * s, 6 * s);
-      ctx.fillText('💖', 14 * s, 6 * s);
+      ctx.font = `${Math.round(13 * s)}px "Segoe UI Emoji", sans-serif`;
+      ctx.fillText('💖', -12 * s, 4 * s);
+      ctx.fillText('💖', 12 * s, 4 * s);
     }
     ctx.restore();
   }

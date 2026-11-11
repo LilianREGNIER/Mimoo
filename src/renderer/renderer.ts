@@ -148,6 +148,8 @@ class DesktopPetRendererApp {
   private readonly speechTextEl = document.getElementById('pet-speech-text');
 
   private currentShopCategory = 'all';
+  private currentShopTab: 'market' | 'inventory' = 'market';
+  private shopModalPositioned = false;
 
   constructor() {
     const canvasEl = document.getElementById('pet-canvas') as HTMLCanvasElement | null;
@@ -259,6 +261,7 @@ class DesktopPetRendererApp {
     this.renderSandboxLineagesGrid();
     this.populateDisplaysSelect();
     this.syncSettingsControls();
+    this.initDraggableShopModal();
     this.bindPointerAndDomEvents();
     this.bindIpcListeners();
 
@@ -469,10 +472,24 @@ class DesktopPetRendererApp {
         pet.needs.energy < 30);
     this.petActor.setHasActiveDemand(hasDemand);
 
+    const isAnyMenuOpen =
+      !this.hudEl?.classList.contains('hidden') ||
+      !this.statsModalEl?.classList.contains('hidden') ||
+      !this.sandboxModalEl?.classList.contains('hidden') ||
+      !this.shopModalEl?.classList.contains('hidden') ||
+      !this.onlineModalEl?.classList.contains('hidden') ||
+      !this.drawerFoodsEl?.classList.contains('hidden') ||
+      !this.drawerGamesEl?.classList.contains('hidden');
+
+    if (isAnyMenuOpen) {
+      this.petActor.stopWalking();
+    }
+
     const canWalk =
       pet.stage !== 'egg' &&
       !pet.isSleeping &&
       !this.isSpongeMode &&
+      !isAnyMenuOpen &&
       !this.animator.isInTemporaryAnimation() &&
       this.miniGames.getActiveGame() !== 'rps_duel' &&
       (this.miniGames.getActiveGame() === 'star_catch' || !hasPriorityNeedPose);
@@ -675,12 +692,33 @@ class DesktopPetRendererApp {
       this.closeShopModal();
     });
 
-    document.getElementById('btn-action-online')?.addEventListener('click', () => {
-      this.openOnlineModal();
+    document.getElementById('tab-btn-shop-market')?.addEventListener('click', () => {
+      this.switchShopTab('market');
     });
 
-    document.getElementById('btn-close-online')?.addEventListener('click', () => {
-      this.closeOnlineModal();
+    document.getElementById('tab-btn-shop-inventory')?.addEventListener('click', () => {
+      this.switchShopTab('inventory');
+    });
+
+    document.getElementById('btn-unequip-hat')?.addEventListener('click', () => {
+      this.engine.equipCosmetic('hat', null);
+      this.animator.spawnParticles('sparkle', this.petActor.x, this.petActor.y, 4);
+      this.refreshShopUI();
+      void this.persistSaveState();
+    });
+
+    document.getElementById('btn-unequip-accessory')?.addEventListener('click', () => {
+      this.engine.equipCosmetic('accessory', null);
+      this.animator.spawnParticles('sparkle', this.petActor.x, this.petActor.y, 4);
+      this.refreshShopUI();
+      void this.persistSaveState();
+    });
+
+    document.getElementById('btn-unequip-aura')?.addEventListener('click', () => {
+      this.engine.equipCosmetic('aura', null);
+      this.animator.spawnParticles('sparkle', this.petActor.x, this.petActor.y, 4);
+      this.refreshShopUI();
+      void this.persistSaveState();
     });
 
     const shopFilterBtns = document.querySelectorAll<HTMLButtonElement>('.shop-filter-btn');
@@ -688,9 +726,17 @@ class DesktopPetRendererApp {
       btn.addEventListener('click', () => {
         shopFilterBtns.forEach((b) => b.classList.remove('active'));
         btn.classList.add('active');
-        this.currentShopCategory = btn.dataset.slot || 'all';
+        this.currentShopCategory = btn.dataset.category || 'all';
         this.refreshShopUI();
       });
+    });
+
+    document.getElementById('btn-action-online')?.addEventListener('click', () => {
+      this.openOnlineModal();
+    });
+
+    document.getElementById('btn-close-online')?.addEventListener('click', () => {
+      this.closeOnlineModal();
     });
 
     document.getElementById('btn-copy-my-passport')?.addEventListener('click', async () => {
@@ -1102,11 +1148,6 @@ class DesktopPetRendererApp {
 
       this.refreshAllPanelsUI();
       void this.persistSaveState();
-      return;
-    }
-
-    if (currentPet.needsCuddle) {
-      this.handlePetAction(this.petActor.x, this.petActor.y, false);
       return;
     }
 
@@ -1737,6 +1778,7 @@ class DesktopPetRendererApp {
     if (!this.hudEl) {
       return;
     }
+    this.petActor.stopWalking();
     this.refreshHudUI();
     this.hudEl.classList.remove('hidden');
     this.updateFloatingPanelsPosition();
@@ -1764,6 +1806,7 @@ class DesktopPetRendererApp {
 
   private openSandboxModal(): void {
     this.hideHudPanel();
+    this.petActor.stopWalking();
     this.statsModalEl?.classList.add('hidden');
     this.refreshSandboxMetricsUI();
     this.renderSandboxLineagesGrid();
@@ -1780,19 +1823,91 @@ class DesktopPetRendererApp {
     this.hitTester.refresh();
   }
 
+  private initDraggableShopModal(): void {
+    const modal = this.shopModalEl;
+    if (!modal) return;
+    const header = modal.querySelector('.modal-header') as HTMLElement | null;
+    if (!header) return;
+
+    let isDragging = false;
+    let startMouseX = 0;
+    let startMouseY = 0;
+    let modalInitialLeft = 0;
+    let modalInitialTop = 0;
+
+    header.addEventListener('mousedown', (e) => {
+      if ((e.target as HTMLElement).closest('button')) return;
+      isDragging = true;
+      startMouseX = e.clientX;
+      startMouseY = e.clientY;
+      const rect = modal.getBoundingClientRect();
+      modalInitialLeft = rect.left;
+      modalInitialTop = rect.top;
+      header.style.cursor = 'grabbing';
+      e.preventDefault();
+    });
+
+    window.addEventListener('mousemove', (e) => {
+      if (!isDragging) return;
+      const dx = e.clientX - startMouseX;
+      const dy = e.clientY - startMouseY;
+      const width = modal.offsetWidth || 560;
+      const height = modal.offsetHeight || 420;
+
+      const newLeft = Math.max(8, Math.min(window.innerWidth - width - 8, modalInitialLeft + dx));
+      const newTop = Math.max(8, Math.min(window.innerHeight - height - 8, modalInitialTop + dy));
+
+      modal.style.left = `${newLeft}px`;
+      modal.style.top = `${newTop}px`;
+      modal.style.transform = 'none';
+      this.hitTester.refresh();
+    });
+
+    window.addEventListener('mouseup', () => {
+      if (isDragging) {
+        isDragging = false;
+        header.style.cursor = 'grab';
+        this.hitTester.refresh();
+      }
+    });
+  }
+
   private openShopModal(): void {
     this.hideHudPanel();
     this.statsModalEl?.classList.add('hidden');
     this.sandboxModalEl?.classList.add('hidden');
     this.onlineModalEl?.classList.add('hidden');
-    this.refreshShopUI();
-    this.shopModalEl?.classList.remove('hidden');
+    this.petActor.stopWalking();
+
+    if (this.shopModalEl) {
+      if (!this.shopModalPositioned) {
+        const width = Math.min(560, window.innerWidth - 32);
+        const height = Math.min(520, window.innerHeight - 60);
+        const left = Math.max(16, Math.round((window.innerWidth - width) / 2));
+        const top = Math.max(16, Math.round((window.innerHeight - height) / 2));
+        this.shopModalEl.style.left = `${left}px`;
+        this.shopModalEl.style.top = `${top}px`;
+        this.shopModalEl.style.transform = 'none';
+        this.shopModalPositioned = true;
+      }
+      this.refreshShopUI();
+      this.shopModalEl.classList.remove('hidden');
+    }
     this.hitTester.refresh();
   }
 
   private closeShopModal(): void {
     this.shopModalEl?.classList.add('hidden');
     this.hitTester.refresh();
+  }
+
+  private switchShopTab(tab: 'market' | 'inventory'): void {
+    this.currentShopTab = tab;
+    const marketBtn = document.getElementById('tab-btn-shop-market');
+    const invBtn = document.getElementById('tab-btn-shop-inventory');
+    marketBtn?.classList.toggle('active', tab === 'market');
+    invBtn?.classList.toggle('active', tab === 'inventory');
+    this.refreshShopUI();
   }
 
   private refreshShopUI(): void {
@@ -1806,20 +1921,87 @@ class DesktopPetRendererApp {
       this.hudCoinsCountEl.textContent = String(pet.tamaCoins);
     }
 
+    const ownedCountEl = document.getElementById('shop-owned-count');
+    if (ownedCountEl) {
+      ownedCountEl.textContent = String(pet.ownedCosmetics.length);
+    }
+
+    // Résumé de l'équipement actuel
+    const summaryEl = document.getElementById('shop-equipped-summary');
+    if (summaryEl) {
+      summaryEl.classList.toggle('hidden', this.currentShopTab !== 'inventory');
+    }
+
+    const hatItem = allCosmetics.find((c) => c.id === pet.equippedCosmetics.hat);
+    const accItem = allCosmetics.find((c) => c.id === pet.equippedCosmetics.accessory);
+    const auraItem = allCosmetics.find((c) => c.id === pet.equippedCosmetics.aura);
+
+    const hatLabel = document.getElementById('summary-hat-name');
+    const hatBtn = document.getElementById('btn-unequip-hat');
+    const hatPill = document.getElementById('slot-summary-hat');
+    if (hatLabel && hatBtn && hatPill) {
+      hatLabel.textContent = hatItem ? `Chapeau : ${hatItem.name}` : 'Chapeau : Aucun';
+      hatBtn.classList.toggle('hidden', !hatItem);
+      hatPill.classList.toggle('active', !!hatItem);
+    }
+
+    const accLabel = document.getElementById('summary-acc-name');
+    const accBtn = document.getElementById('btn-unequip-accessory');
+    const accPill = document.getElementById('slot-summary-accessory');
+    if (accLabel && accBtn && accPill) {
+      accLabel.textContent = accItem ? `Accessoire : ${accItem.name}` : 'Accessoire : Aucun';
+      accBtn.classList.toggle('hidden', !accItem);
+      accPill.classList.toggle('active', !!accItem);
+    }
+
+    const auraLabel = document.getElementById('summary-aura-name');
+    const auraBtn = document.getElementById('btn-unequip-aura');
+    const auraPill = document.getElementById('slot-summary-aura');
+    if (auraLabel && auraBtn && auraPill) {
+      auraLabel.textContent = auraItem ? `Aura : ${auraItem.name}` : 'Aura : Aucune';
+      auraBtn.classList.toggle('hidden', !auraItem);
+      auraPill.classList.toggle('active', !!auraItem);
+    }
+
     if (!this.shopItemsGridEl) return;
     this.shopItemsGridEl.innerHTML = '';
 
-    const filtered =
-      this.currentShopCategory === 'all'
-        ? allCosmetics
-        : allCosmetics.filter((item) => item.slot === this.currentShopCategory);
+    // Filtrage par onglet (Boutique ou Inventaire) et catégorie
+    let itemsToDisplay = allCosmetics;
+    if (this.currentShopTab === 'inventory') {
+      itemsToDisplay = allCosmetics.filter((item) => pet.ownedCosmetics.includes(item.id));
+    }
 
-    for (const item of filtered) {
+    if (this.currentShopCategory !== 'all') {
+      itemsToDisplay = itemsToDisplay.filter((item) => item.slot === this.currentShopCategory);
+    }
+
+    if (itemsToDisplay.length === 0) {
+      const emptyDiv = document.createElement('div');
+      emptyDiv.className = 'shop-empty-state';
+      if (this.currentShopTab === 'inventory') {
+        emptyDiv.innerHTML = `
+          <div>🎒 Vous ne possédez aucun cosmétique dans cette catégorie pour l'instant.</div>
+          <button type="button" class="shop-action-btn equip" id="btn-goto-market" style="width: auto; padding: 7px 16px; margin-top: 10px;">
+            🛍️ Ouvrir la Boutique pour en acheter
+          </button>
+        `;
+        emptyDiv.querySelector('#btn-goto-market')?.addEventListener('click', () => {
+          this.switchShopTab('market');
+        });
+      } else {
+        emptyDiv.textContent = '✨ Aucun article trouvé.';
+      }
+      this.shopItemsGridEl.appendChild(emptyDiv);
+      return;
+    }
+
+    for (const item of itemsToDisplay) {
       const isOwned = pet.ownedCosmetics.includes(item.id);
       const isEquipped = pet.equippedCosmetics[item.slot] === item.id;
 
       const card = document.createElement('div');
-      card.className = `shop-item-card ${isEquipped ? 'equipped' : isOwned ? 'owned' : ''}`;
+      card.className = `shop-item-card ${isEquipped ? 'is-equipped' : isOwned ? 'owned' : ''}`;
 
       const iconDiv = document.createElement('div');
       iconDiv.className = 'shop-item-icon';
@@ -1833,52 +2015,77 @@ class DesktopPetRendererApp {
       descDiv.className = 'shop-item-desc';
       descDiv.textContent = item.description;
 
-      const actionBtn = document.createElement('button');
-      actionBtn.type = 'button';
-      actionBtn.className = `shop-btn ${isEquipped ? 'shop-btn-equipped' : isOwned ? 'shop-btn-equip' : 'shop-btn-buy'}`;
+      const actionsDiv = document.createElement('div');
+      actionsDiv.className = 'shop-item-actions';
 
-      if (isEquipped) {
-        actionBtn.textContent = 'Déséquiper';
-        actionBtn.addEventListener('click', () => {
-          this.engine.equipCosmetic(item.slot, null);
-          this.refreshShopUI();
-          this.animator.spawnParticles('sparkle', this.petActor.x, this.petActor.y, 4);
-          void this.persistSaveState();
-        });
-      } else if (isOwned) {
-        actionBtn.textContent = 'Équiper';
-        actionBtn.addEventListener('click', () => {
-          this.engine.equipCosmetic(item.slot, item.id);
-          this.refreshShopUI();
-          this.animator.spawnParticles('star', this.petActor.x, this.petActor.y, 6);
-          this.showSpeechBubble(`Nouveau look : ${item.name} ${item.icon} ! ✨`, 2800);
-          void this.persistSaveState();
-        });
-      } else {
-        actionBtn.textContent = `🪙 ${item.price}`;
-        const canAfford = pet.tamaCoins >= item.price;
-        if (!canAfford) {
-          actionBtn.disabled = true;
-          actionBtn.title = 'Pas assez de TamaCoins ! Jouez ou soignez votre pet pour en gagner.';
-        }
-        actionBtn.addEventListener('click', () => {
-          const res = this.engine.buyCosmetic(item.id);
-          if (res.purchased) {
-            this.engine.equipCosmetic(item.slot, item.id);
-            this.refreshShopUI();
-            this.animator.spawnParticles('confetti', this.petActor.x, this.petActor.y, 10);
-            this.showSpeechBubble(`Acheté et équipé : ${item.name} ${item.icon} ! 🎉`, 3200);
-            void this.persistSaveState();
+      if (this.currentShopTab === 'inventory') {
+        // Mode Inventaire : bouton Équiper / Déséquiper
+        const toggleBtn = document.createElement('button');
+        toggleBtn.type = 'button';
+        toggleBtn.className = `shop-action-btn ${isEquipped ? 'buy' : 'equip'}`;
+        toggleBtn.textContent = isEquipped ? 'Déséquiper' : 'Équiper';
+        toggleBtn.addEventListener('click', () => {
+          if (isEquipped) {
+            this.engine.equipCosmetic(item.slot, null);
+            this.animator.spawnParticles('sparkle', this.petActor.x, this.petActor.y, 4);
           } else {
-            this.showSpeechBubble('Pas assez de pièces TamaCoins ! 🪙');
+            this.engine.equipCosmetic(item.slot, item.id);
+            this.animator.spawnParticles('star', this.petActor.x, this.petActor.y, 6);
+            this.showSpeechBubble(`Équipé : ${item.name} ${item.icon} ! ✨`, 2800);
           }
+          this.refreshShopUI();
+          void this.persistSaveState();
         });
+        actionsDiv.appendChild(toggleBtn);
+      } else {
+        // Mode Boutique : achat
+        if (isOwned) {
+          const ownedBtn = document.createElement('button');
+          ownedBtn.type = 'button';
+          ownedBtn.className = `shop-action-btn ${isEquipped ? 'buy' : 'equip'}`;
+          ownedBtn.textContent = isEquipped ? '✓ Équipé' : '✓ Possédé (Équiper)';
+          ownedBtn.addEventListener('click', () => {
+            if (isEquipped) {
+              this.engine.equipCosmetic(item.slot, null);
+            } else {
+              this.engine.equipCosmetic(item.slot, item.id);
+              this.animator.spawnParticles('star', this.petActor.x, this.petActor.y, 6);
+              this.showSpeechBubble(`Équipé : ${item.name} ${item.icon} ! ✨`, 2800);
+            }
+            this.refreshShopUI();
+            void this.persistSaveState();
+          });
+          actionsDiv.appendChild(ownedBtn);
+        } else {
+          const buyBtn = document.createElement('button');
+          buyBtn.type = 'button';
+          buyBtn.className = 'shop-action-btn buy';
+          buyBtn.textContent = `🪙 ${item.price} Acheter`;
+          const canAfford = pet.tamaCoins >= item.price;
+          if (!canAfford) {
+            buyBtn.disabled = true;
+            buyBtn.title = 'Pas assez de pièces TamaCoins !';
+          }
+          buyBtn.addEventListener('click', () => {
+            const res = this.engine.buyCosmetic(item.id);
+            if (res.purchased) {
+              this.engine.equipCosmetic(item.slot, item.id);
+              this.refreshShopUI();
+              this.animator.spawnParticles('confetti', this.petActor.x, this.petActor.y, 10);
+              this.showSpeechBubble(`Acheté et équipé : ${item.name} ${item.icon} ! 🎉`, 3200);
+              void this.persistSaveState();
+            } else {
+              this.showSpeechBubble('Pas assez de pièces TamaCoins ! 🪙');
+            }
+          });
+          actionsDiv.appendChild(buyBtn);
+        }
       }
 
       card.appendChild(iconDiv);
       card.appendChild(nameDiv);
       card.appendChild(descDiv);
-      card.appendChild(actionBtn);
+      card.appendChild(actionsDiv);
 
       this.shopItemsGridEl.appendChild(card);
     }
@@ -1886,6 +2093,7 @@ class DesktopPetRendererApp {
 
   private openOnlineModal(): void {
     this.hideHudPanel();
+    this.petActor.stopWalking();
     this.statsModalEl?.classList.add('hidden');
     this.sandboxModalEl?.classList.add('hidden');
     this.shopModalEl?.classList.add('hidden');
@@ -1947,6 +2155,7 @@ class DesktopPetRendererApp {
 
   private openStatsModal(initialTabId: string): void {
     this.hideHudPanel();
+    this.petActor.stopWalking();
     this.sandboxModalEl?.classList.add('hidden');
     this.shopModalEl?.classList.add('hidden');
     this.onlineModalEl?.classList.add('hidden');

@@ -47,9 +47,6 @@
           <span id="hud-coins-pill" class="hud-badge coins-badge" title="Pièces TamaCoins gagnées">
             🪙 <span id="hud-coins-count">100</span>
           </span>
-          <span id="hud-fps-badge" class="hud-badge fps-badge" title="Cadence de rendu adaptative">
-            🍃 5 FPS Éco
-          </span>
           <button id="btn-close-hud" class="icon-close-btn" title="Fermer (Échap)">✕</button>
         </div>
       </header>
@@ -511,7 +508,7 @@
       class="glass-panel modal-panel shop-modal ui-interactive hidden"
       aria-label="Boutique cosmétique et garde-robe"
     >
-      <header class="modal-header">
+      <header class="modal-header" title="Cliquez et glissez pour déplacer la fenêtre">
         <div class="shop-title-row">
           <h2 class="modal-title">🛍️ Boutique & Garde-Robe</h2>
           <span class="shop-coins-pill">🪙 <span id="shop-coins-val">100</span> TamaCoins</span>
@@ -519,12 +516,40 @@
         <button id="btn-close-shop" class="icon-close-btn" title="Fermer (Échap)">✕</button>
       </header>
       <div class="modal-body shop-body">
+        <!-- Onglets principaux : Boutique vs Mon Inventaire -->
+        <div class="shop-main-tabs">
+          <button type="button" id="tab-btn-shop-market" class="shop-main-tab-btn active">
+            🛍️ Boutique (Acheter)
+          </button>
+          <button type="button" id="tab-btn-shop-inventory" class="shop-main-tab-btn">
+            🎒 Mon Inventaire (<span id="shop-owned-count">0</span>)
+          </button>
+        </div>
+
+        <!-- Résumé de l'équipement actuel (visible en mode inventaire) -->
+        <div id="shop-equipped-summary" class="shop-equipped-summary hidden">
+          <div class="equipped-slot-pill" id="slot-summary-hat">
+            <span class="slot-icon">👑</span>
+            <span class="slot-label" id="summary-hat-name">Chapeau : Aucun</span>
+            <button type="button" class="btn-slot-unequip hidden" id="btn-unequip-hat" title="Déséquiper">✕</button>
+          </div>
+          <div class="equipped-slot-pill" id="slot-summary-accessory">
+            <span class="slot-icon">🕶️</span>
+            <span class="slot-label" id="summary-acc-name">Accessoire : Aucun</span>
+            <button type="button" class="btn-slot-unequip hidden" id="btn-unequip-accessory" title="Déséquiper">✕</button>
+          </div>
+          <div class="equipped-slot-pill" id="slot-summary-aura">
+            <span class="slot-icon">🌈</span>
+            <span class="slot-label" id="summary-aura-name">Aura : Aucune</span>
+            <button type="button" class="btn-slot-unequip hidden" id="btn-unequip-aura" title="Désactiver">✕</button>
+          </div>
+        </div>
+
         <div class="shop-filter-bar">
           <button class="shop-filter-btn active" data-category="all">✨ Tous</button>
           <button class="shop-filter-btn" data-category="hat">👑 Chapeaux</button>
           <button class="shop-filter-btn" data-category="accessory">🕶️ Accessoires</button>
           <button class="shop-filter-btn" data-category="aura">🌈 Auras</button>
-          <button class="shop-filter-btn" data-category="inventory">🎒 Mon Inventaire</button>
         </div>
         <div id="shop-items-grid" class="shop-items-grid"></div>
       </div>

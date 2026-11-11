@@ -46,6 +46,8 @@ export class PetActor {
   private targetX: number | null = null;
   private aiPauseTimer = 2.5;
   private vy = 0;
+  private microStepRemaining = 0;
+  private lastWanderDir = 1;
 
   // Suivi souris (Drag & Drop + Caresse par frottement + Brossage Éponge)
   private pointerDown = false;
@@ -119,6 +121,7 @@ export class PetActor {
   public stopWalking(): void {
     this.targetX = null;
     this.isMoving = false;
+    this.microStepRemaining = 0;
     this.aiPauseTimer = 3.2;
   }
 
@@ -372,7 +375,11 @@ export class PetActor {
         this.x = this.targetX;
         this.targetX = null;
         this.isMoving = false;
-        this.aiPauseTimer = 2.4 + Math.random() * 4.2;
+        if (this.microStepRemaining > 0) {
+          this.aiPauseTimer = 0.5 + Math.random() * 0.8;
+        } else {
+          this.aiPauseTimer = 1.8 + Math.random() * 3.2;
+        }
         this.callbacks.onPositionChanged(this.x, this.y);
       } else {
         const dir = Math.sign(diffX);
@@ -393,29 +400,57 @@ export class PetActor {
       }
     }
 
-    // Décompte avant la prochaine balade autonome sur TOUTE la largeur de l'écran
+    // Décompte avant la prochaine action autonome
     this.aiPauseTimer -= safeDt;
     if (this.aiPauseTimer <= 0) {
       const margin = this.getHorizontalMargin();
       const minX = margin;
       const maxX = Math.max(margin + 40, window.innerWidth - margin);
-      // Choisit une destination libre sur toute la largeur de l'écran (avec grande variété de trajets)
-      const roll = Math.random();
-      let target: number;
-      if (roll < 0.35) {
-        // Grand trajet vers le côté opposé de l'écran
-        target = this.x > (minX + maxX) / 2
-          ? minX + Math.random() * ((maxX - minX) * 0.38)
-          : maxX - Math.random() * ((maxX - minX) * 0.38);
-      } else if (roll < 0.70) {
-        // Balade aléatoire n'importe où sur l'écran
-        target = minX + Math.random() * (maxX - minX);
-      } else {
-        // Petit déplacement local
-        const delta = (Math.random() < 0.5 ? -1 : 1) * (70 + Math.random() * 160);
-        target = this.x + delta;
+
+      // Si une série de micro-pas est en cours :
+      if (this.microStepRemaining > 0) {
+        this.microStepRemaining--;
+        // 60% garde la même direction, 40% change pour faire un petit demi-tour mignon
+        if (Math.random() < 0.4) {
+          this.lastWanderDir = -this.lastWanderDir;
+        }
+        const stepDist = 18 + Math.random() * 38;
+        this.targetX = this.clampX(this.x + this.lastWanderDir * stepDist);
+        this.aiPauseTimer = 0.6 + Math.random() * 0.9;
+        return;
       }
-      this.targetX = this.clampX(target);
+
+      // Décision comportementale variée :
+      const roll = Math.random();
+
+      if (roll < 0.45) {
+        // 1) Quelques petits pas (micro-déplacement : 2 à 4 pas successifs de 20-45px)
+        this.microStepRemaining = 1 + Math.floor(Math.random() * 3);
+        this.lastWanderDir = Math.random() < 0.5 ? -1 : 1;
+        const stepDist = 18 + Math.random() * 32;
+        this.targetX = this.clampX(this.x + this.lastWanderDir * stepDist);
+        this.aiPauseTimer = 0.7 + Math.random() * 0.8;
+      } else if (roll < 0.75) {
+        // 2) Trot / Marche moyenne (70 à 180 px dans une direction)
+        const dir = Math.random() < 0.5 ? -1 : 1;
+        this.lastWanderDir = dir;
+        const dist = 70 + Math.random() * 110;
+        this.targetX = this.clampX(this.x + dir * dist);
+        this.aiPauseTimer = 2.0 + Math.random() * 2.5;
+      } else if (roll < 0.88) {
+        // 3) Longue traversée (occasionnelle) vers une zone lointaine du bureau
+        const target =
+          this.x > (minX + maxX) / 2
+            ? minX + Math.random() * ((maxX - minX) * 0.4)
+            : maxX - Math.random() * ((maxX - minX) * 0.4);
+        this.targetX = this.clampX(target);
+        this.aiPauseTimer = 3.5 + Math.random() * 3.5;
+      } else {
+        // 4) Se retourne simplement pour observer sans bouger
+        this.flipX = !this.flipX;
+        this.targetX = null;
+        this.aiPauseTimer = 1.5 + Math.random() * 2.0;
+      }
     }
   }
 
