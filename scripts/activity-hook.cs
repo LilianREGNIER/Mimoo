@@ -4,6 +4,29 @@ using System.Runtime.InteropServices;
 using System.Text;
 using System.Threading;
 
+[ComImport]
+[Guid("BCDE0395-E52F-467C-8E3D-C4579291692E")]
+class MMDeviceEnumeratorComObject { }
+
+[Guid("A95664D2-9614-4F35-A746-DE8DB63617E6"), InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
+interface IMMDeviceEnumerator {
+    int EnumAudioEndpoints(int dataFlow, int stateMask, out IntPtr devices);
+    int GetDefaultAudioEndpoint(int dataFlow, int role, out IMMDevice endpoint);
+    int GetDevice(string id, out IMMDevice endpoint);
+    int RegisterEndpointNotificationCallback(IntPtr client);
+    int UnregisterEndpointNotificationCallback(IntPtr client);
+}
+
+[Guid("D666063F-1587-4E43-81F1-B948E807363F"), InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
+interface IMMDevice {
+    int Activate(ref Guid id, int clsCtx, IntPtr activationParams, [MarshalAs(UnmanagedType.IUnknown)] out object interfacePointer);
+}
+
+[Guid("C02216F6-8C67-4B5B-9D00-D008E73E0064"), InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
+interface IAudioMeterInformation {
+    int GetPeakValue(out float peak);
+}
+
 class Program {
     private const int WH_MOUSE_LL = 14;
     private const int WH_KEYBOARD_LL = 13;
@@ -19,12 +42,15 @@ class Program {
     private static string lastValidWindowJson = "null";
     private static bool lastMusicState = false;
     private static int heartbeatTick = 0;
+    private static int musicSilenceCounter = 0;
 
     private delegate IntPtr LowLevelProc(int nCode, IntPtr wParam, IntPtr lParam);
     private static LowLevelProc mouseProc = MouseHookCallback;
     private static LowLevelProc keyProc = KeyHookCallback;
     private static IntPtr mouseHookId = IntPtr.Zero;
     private static IntPtr keyHookId = IntPtr.Zero;
+
+    private static IAudioMeterInformation audioMeter = null;
 
     private static IntPtr MouseHookCallback(int nCode, IntPtr wParam, IntPtr lParam) {
         if (nCode >= 0) {
@@ -75,10 +101,6 @@ class Program {
     private static extern bool EnumWindows(EnumWindowsProc lpEnumFunc, IntPtr lParam);
     private delegate bool EnumWindowsProc(IntPtr hWnd, IntPtr lParam);
 
-    [DllImport("user32.dll")]
-    [return: MarshalAs(UnmanagedType.Bool)]
-    private static extern bool IsWindowVisible(IntPtr hWnd);
-
     [StructLayout(LayoutKind.Sequential)]
     private struct RECT {
         public int Left;
@@ -98,36 +120,87 @@ class Program {
         public int pt_y;
     }
 
-    private static bool isMusicFound = false;
+    private static bool hasMusicKeywords = false;
+    private static bool isSpotifyPlayingTrack = false;
+
+    private static readonly string[] MusicKeywords = new string[] {
+        "youtube music",
+        "music.youtube",
+        "youtube",
+        "spotify",
+        "deezer",
+        "soundcloud",
+        "apple music",
+        "tidal",
+        "qobuz",
+        "amazon music",
+        "pandora",
+        "bandcamp",
+        "foobar",
+        "winamp",
+        "aimp",
+        "vlc"
+    };
 
     private static bool CheckMusicCallback(IntPtr hWnd, IntPtr lParam) {
-        if (!IsWindowVisible(hWnd)) return true;
-        StringBuilder sb = new StringBuilder(256);
-        GetWindowText(hWnd, sb, 256);
-        string title = sb.ToString();
-        if (string.IsNullOrEmpty(title)) return true;
+        StringBuilder sb = new StringBuilder(512);
+        GetWindowText(hWnd, sb, 512);
+        string raw = sb.ToString();
+        if (string.IsNullOrEmpty(raw) || raw.Length < 3) return true;
 
-        string lower = title.ToLowerInvariant();
+        string lower = raw.ToLowerInvariant();
 
-        // 1) YouTube Music, SoundCloud, Deezer, Apple Music, Tidal
-        if (lower.Contains("youtube music") || lower.Contains("soundcloud") ||
-            lower.Contains("deezer") || lower.Contains("apple music") ||
-            lower.Contains("tidal") || lower.Contains("qobuz")) {
-            isMusicFound = true;
-            return false;
-        }
-
-        // 2) Spotify : quand une chanson joue, le titre est sous la forme "Artiste - Titre"
-        // Quand Spotify est en pause ou fermé, le titre est "Spotify", "Spotify Free", "Spotify Premium"
-        if (lower.Contains("spotify") && title.Contains(" - ")) {
-            isMusicFound = true;
-            return false;
+        for (int i = 0; i < MusicKeywords.Length; i++) {
+            if (lower.Contains(MusicKeywords[i])) {
+                hasMusicKeywords = true;
+                if (lower.Contains("spotify") && raw.Contains(" - ")) {
+                    isSpotifyPlayingTrack = true;
+                }
+                break;
+            }
         }
 
         return true;
     }
 
+    private static void InitCoreAudio() {
+        try {
+            var enumerator = (IMMDeviceEnumerator)new MMDeviceEnumeratorComObject();
+            IMMDevice device;
+            // 0 = eRender, 1 = eMultimedia
+            int hr = enumerator.GetDefaultAudioEndpoint(0, 1, out device);
+            if (hr == 0 && device != null) {
+                Guid meterIid = typeof(IAudioMeterInformation).GUID;
+                object meterObj;
+                hr = device.Activate(ref meterIid, 23, IntPtr.Zero, out meterObj);
+                if (hr == 0 && meterObj != null) {
+                    audioMeter = (IAudioMeterInformation)meterObj;
+                }
+            }
+        } catch {
+            audioMeter = null;
+        }
+    }
+
+    private static float GetCurrentAudioPeak() {
+        if (audioMeter == null) {
+            InitCoreAudio();
+        }
+        if (audioMeter != null) {
+            try {
+                float peak = 0;
+                int hr = audioMeter.GetPeakValue(out peak);
+                if (hr == 0) return peak;
+            } catch {
+                audioMeter = null;
+            }
+        }
+        return 0f;
+    }
+
     static void Main(string[] args) {
+        InitCoreAudio();
+
         using (Process curProcess = Process.GetCurrentProcess())
         using (ProcessModule curModule = curProcess.MainModule) {
             IntPtr moduleHandle = GetModuleHandle(curModule.ModuleName);
@@ -183,28 +256,55 @@ class Program {
                 windowJson = lastValidWindowJson;
             }
 
-            // 2. Détection automatique de musique (YouTube Music, Spotify, SoundCloud, Deezer, etc.)
-            isMusicFound = false;
+            // 2. Détection de musique (Fenêtres + Audio Peak Meter Windows Core Audio)
+            hasMusicKeywords = false;
+            isSpotifyPlayingTrack = false;
             try {
                 EnumWindows(CheckMusicCallback, IntPtr.Zero);
-            } catch {
-                isMusicFound = false;
+            } catch {}
+
+            float peak = GetCurrentAudioPeak();
+            bool isSoundActive = (peak > 0.005f);
+
+            bool isMusicNow = false;
+            if (isSpotifyPlayingTrack) {
+                isMusicNow = true;
+            } else if (hasMusicKeywords && isSoundActive) {
+                // Application de musique ouverte ET son actif sortant des haut-parleurs/écouteurs !
+                isMusicNow = true;
+            } else if (hasMusicKeywords && peak > 0.002f) {
+                isMusicNow = true;
+            }
+
+            // Anti-rebond (debounce) : si la musique s'arrête, attendre 3 secondes de silence (6 ticks) avant de couper
+            bool effectiveMusicState = isMusicNow;
+            if (isMusicNow) {
+                musicSilenceCounter = 0;
+                effectiveMusicState = true;
+            } else {
+                if (lastMusicState && musicSilenceCounter < 6) {
+                    musicSilenceCounter++;
+                    effectiveMusicState = true;
+                } else {
+                    effectiveMusicState = false;
+                }
             }
 
             bool hasActivity = (c > 0 || k > 0);
             bool windowChanged = (windowJson != lastWindowJson);
-            bool musicChanged = (isMusicFound != lastMusicState);
+            bool musicChanged = (effectiveMusicState != lastMusicState);
             bool heartbeat = (heartbeatTick >= 4); // Toutes les 2 secondes au moins
 
             if (hasActivity || windowChanged || musicChanged || heartbeat) {
                 heartbeatTick = 0;
                 lastWindowJson = windowJson;
-                lastMusicState = isMusicFound;
+                lastMusicState = effectiveMusicState;
 
                 Console.WriteLine(string.Format(
                     "{{\"clicks\":{0},\"keys\":{1},\"window\":{2},\"music\":{3}}}",
-                    c, k, windowJson, isMusicFound ? "true" : "false"
+                    c, k, windowJson, effectiveMusicState ? "true" : "false"
                 ));
+                Console.Out.Flush();
             }
         }, null, 500, 500);
 

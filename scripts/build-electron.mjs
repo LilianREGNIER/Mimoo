@@ -52,10 +52,14 @@ async function buildElectron() {
     path.join(rootDir, 'dist', 'data')
   );
 
-  // 3.5 Compilation du hook natif Windows si absent (assets/bin/activity-hook.exe)
+  // 3.5 Compilation du hook natif Windows (assets/bin/activity-hook.exe)
   const hookExePath = path.join(rootDir, 'assets', 'bin', 'activity-hook.exe');
   const hookCsPath = path.join(rootDir, 'scripts', 'activity-hook.cs');
-  if (!fs.existsSync(hookExePath) && fs.existsSync(hookCsPath)) {
+  const needsCompile =
+    fs.existsSync(hookCsPath) &&
+    (!fs.existsSync(hookExePath) ||
+      fs.statSync(hookCsPath).mtimeMs > fs.statSync(hookExePath).mtimeMs);
+  if (needsCompile) {
     try {
       const cscPath = 'C:\\Windows\\Microsoft.NET\\Framework64\\v4.0.30319\\csc.exe';
       if (fs.existsSync(cscPath)) {

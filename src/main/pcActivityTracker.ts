@@ -16,11 +16,24 @@ const FLUSH_INTERVAL_MS = 2000;
 
 function resolveHookExecutable(): string | null {
   const candidates = [
+    // 1) extraResources dans un build packagé : <app>/resources/bin/activity-hook.exe
+    process.resourcesPath ? path.join(process.resourcesPath, 'bin', 'activity-hook.exe') : '',
+    // 2) asarUnpack dans un build packagé : <app>/resources/app.asar.unpacked/assets/bin/activity-hook.exe
+    process.resourcesPath
+      ? path.join(process.resourcesPath, 'app.asar.unpacked', 'assets', 'bin', 'activity-hook.exe')
+      : '',
+    process.resourcesPath
+      ? path.join(process.resourcesPath, 'app.asar.unpacked', 'dist', 'assets', 'bin', 'activity-hook.exe')
+      : '',
+    // 3) Remplacement app.asar -> app.asar.unpacked
+    path.join(__dirname, '..', '..', 'assets', 'bin', 'activity-hook.exe').replace('app.asar', 'app.asar.unpacked'),
+    path.join(__dirname, '..', 'assets', 'bin', 'activity-hook.exe').replace('app.asar', 'app.asar.unpacked'),
+    // 4) Développement local
     path.join(__dirname, '..', '..', 'assets', 'bin', 'activity-hook.exe'),
     path.join(__dirname, '..', 'assets', 'bin', 'activity-hook.exe'),
     path.join(process.cwd(), 'assets', 'bin', 'activity-hook.exe'),
     path.join(process.cwd(), 'dist', 'assets', 'bin', 'activity-hook.exe'),
-  ];
+  ].filter(Boolean);
 
   for (const c of candidates) {
     if (fs.existsSync(c)) {

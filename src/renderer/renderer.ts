@@ -180,6 +180,8 @@ class DesktopPetRendererApp {
   private nextAutonomousDialogueDelayMs = 24_000 + Math.random() * 26_000;
   private lastKeyDialogueTimestamp = 0;
   private lastClickDialogueTimestamp = 0;
+  private recentKeyPressesWindow: { count: number; timestamp: number }[] = [];
+  private recentMouseClicksWindow: { count: number; timestamp: number }[] = [];
   private readonly shopItemsGridEl = document.getElementById('shop-items-grid');
   private readonly shopCoinsValEl = document.getElementById('shop-coins-val');
   private readonly hudCoinsCountEl = document.getElementById('hud-coins-count');
@@ -1184,19 +1186,9 @@ class DesktopPetRendererApp {
         this.toggleMusicMode(batch.isMusicPlaying);
       }
 
-      // Commentaires contextuels en temps réel si activité mesurée
+      // Commentaires contextuels réactifs en temps réel selon l'activité mesurée
       const now = Date.now();
-      if (batch.keyPresses >= 25 && now - this.lastKeyDialogueTimestamp > 120_000 && !this.engine.getState().isSleeping) {
-        this.lastKeyDialogueTimestamp = now;
-        this.animator.spawnDialogueProp('keyboard', 3200);
-        this.animator.spawnParticles('sparkle', this.petActor.x, this.petActor.y - 15, 6);
-        this.showSpeechBubble("Wouah, tu tapes super vite sur ton clavier ! ⌨️✨", 3600);
-      } else if (batch.mouseClicks >= 18 && now - this.lastClickDialogueTimestamp > 120_000 && !this.engine.getState().isSleeping) {
-        this.lastClickDialogueTimestamp = now;
-        this.animator.spawnDialogueProp('dance', 3000);
-        this.animator.spawnParticles('star', this.petActor.x, this.petActor.y - 15, 6);
-        this.showSpeechBubble("Clic clic clic ! Tu es hyper rapide avec ta souris ! 🖱️💨", 3600);
-      }
+      this.evaluateActivityDialogues(batch.mouseClicks, batch.keyPresses, now);
 
       const res = this.engine.recordPcActivity(batch, Date.now());
       if (res.evolved && res.newForm) {
@@ -1212,9 +1204,60 @@ class DesktopPetRendererApp {
     });
   }
 
+  private evaluateActivityDialogues(mouseClicks: number, keyPresses: number, now: number): void {
+    const pet = this.engine.getState();
+    if (pet.stage === 'egg' || pet.isSleeping) {
+      return;
+    }
+
+    if (keyPresses > 0) {
+      this.recentKeyPressesWindow.push({ count: keyPresses, timestamp: now });
+    }
+    if (mouseClicks > 0) {
+      this.recentMouseClicksWindow.push({ count: mouseClicks, timestamp: now });
+    }
+
+    // Conservation d'une fenêtre glissante de 8 secondes
+    this.recentKeyPressesWindow = this.recentKeyPressesWindow.filter((i) => now - i.timestamp <= 8000);
+    this.recentMouseClicksWindow = this.recentMouseClicksWindow.filter((i) => now - i.timestamp <= 8000);
+
+    const totalKeys = this.recentKeyPressesWindow.reduce((acc, i) => acc + i.count, 0);
+    const totalClicks = this.recentMouseClicksWindow.reduce((acc, i) => acc + i.count, 0);
+
+    // Déclencheur Clavier : au moins 8 frappes en 8 secondes, cooldown de 35s
+    if (totalKeys >= 8 && now - this.lastKeyDialogueTimestamp > 35_000) {
+      this.lastKeyDialogueTimestamp = now;
+      this.recentKeyPressesWindow = [];
+      this.animator.spawnDialogueProp('keyboard', 3200);
+      this.animator.spawnParticles('sparkle', this.petActor.x, this.petActor.y - 15, 6);
+      const keyboardDialogues = [
+        "Wouah, tu tapes super vite sur ton clavier ! ⌨️✨",
+        "Tac tac tac ! Tu écris à toute vitesse ! ⌨️💨",
+        "Quelle cadence sur le clavier, impressionnant ! ⌨️🔥",
+      ];
+      this.showSpeechBubble(keyboardDialogues[Math.floor(Math.random() * keyboardDialogues.length)], 3600);
+      return;
+    }
+
+    // Déclencheur Souris : au moins 6 clics en 8 secondes, cooldown de 35s
+    if (totalClicks >= 6 && now - this.lastClickDialogueTimestamp > 35_000) {
+      this.lastClickDialogueTimestamp = now;
+      this.recentMouseClicksWindow = [];
+      this.animator.spawnDialogueProp('dance', 3000);
+      this.animator.spawnParticles('star', this.petActor.x, this.petActor.y - 15, 6);
+      const mouseDialogues = [
+        "Clic clic clic ! Tu es hyper rapide avec ta souris ! 🖱️💨",
+        "Wouah, quelle rafale de clics ! C'est ultra vif ! 🖱️⚡",
+        "Clic clic ! Tes réflexes à la souris sont géniaux ! 🖱️✨",
+      ];
+      this.showSpeechBubble(mouseDialogues[Math.floor(Math.random() * mouseDialogues.length)], 3600);
+    }
+  }
+
   private recordLocalOverlayInput(mouseClicks: number, keyPresses: number): void {
     const now = Date.now();
     this.lastOverlayInputTimestamp = now;
+    this.evaluateActivityDialogues(mouseClicks, keyPresses, now);
     if (this.hasMainPcActivityHook) {
       return;
     }

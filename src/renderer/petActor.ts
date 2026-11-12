@@ -59,7 +59,9 @@ export class PetActor {
   // IA de marche autonome
   private targetX: number | null = null;
   private aiPauseTimer = 2.5;
-  private vy = 0;
+  public vx = 0;
+  public vy = 0;
+  public isAirborne = false;
   private microStepRemaining = 0;
   private lastWanderDir = 1;
 
@@ -98,6 +100,9 @@ export class PetActor {
   private dragShakeCounter = 0;
   private lastDragDeltaDir = 0;
   private lastDragDeltaTimestamp = 0;
+  private dragHistory: { x: number; y: number; time: number }[] = [];
+  private pendingDropType: 'shake' | 'fast' | 'gentle' | null = null;
+  private dangleTimer = 0;
 
   // Caresse par frottement (mouvement réel de va-et-vient requis)
   private caressStrokeCount = 0;
@@ -361,7 +366,10 @@ export class PetActor {
     this.dragShakeCounter = 0;
     this.lastDragDeltaDir = 0;
     this.lastDragDeltaTimestamp = performance.now();
+    this.dragHistory = [{ x: clientX, y: clientY, time: performance.now() }];
+    this.vx = 0;
     this.vy = 0;
+    this.isAirborne = false;
     return true;
   }
 
@@ -399,6 +407,7 @@ export class PetActor {
 
     // Gestion du Glisser-Déposer (Drag & Drop)
     if (this.pointerDown) {
+      const now = performance.now();
       const distFromStart = Math.hypot(
         clientX - this.dragStartClientX,
         clientY - this.dragStartClientY
@@ -410,11 +419,18 @@ export class PetActor {
         this.isMoving = false;
         this.isPerchingOnWindow = false;
         this.isJumpingToWindow = false;
+        this.isAirborne = false;
       }
 
       if (this.isDragging) {
         this.x = this.clampX(clientX + this.dragOffsetX);
         this.y = this.clampY(clientY + this.dragOffsetY);
+
+        // Historique temporel pour vitesse de lancer (Throw / Fling)
+        this.dragHistory.push({ x: clientX, y: clientY, time: now });
+        if (this.dragHistory.length > 8) {
+          this.dragHistory.shift();
+        }
 
         const instantSpeed = Math.hypot(dx, dy);
         this.dragSpeeds.push(instantSpeed);
@@ -422,14 +438,39 @@ export class PetActor {
           this.dragSpeeds.shift();
         }
 
-        // Animation d'étirement vertical réaliste (porté par la peau du cou / balancement)
-        this.dragStretchY = Math.min(1.28, this.dragStretchY + 0.05);
-        this.dragStretchX = Math.max(0.78, this.dragStretchX - 0.035);
-        this.dragAngle = Math.max(-0.25, Math.min(0.25, -dx * 0.012));
+        let cursorVx = 0;
+        let cursorVy = 0;
+        if (this.dragHistory.length >= 2) {
+          const first = this.dragHistory[0];
+          const last = this.dragHistory[this.dragHistory.length - 1];
+          const dtSec = Math.max(0.016, (last.time - first.time) / 1000);
+          cursorVx = (last.x - first.x) / dtSec;
+          cursorVy = (last.y - first.y) / dtSec;
+        }
+
+        const speed = Math.hypot(cursorVx, cursorVy);
+
+        // Dynamique d'étirement élastique et organique (type gelée / mochi) :
+        if (speed > 80) {
+          const targetStretchY = 1.0 + Math.min(0.42, speed * 0.00035);
+          const targetStretchX = Math.max(0.65, 1.0 / targetStretchY);
+          const targetAngle = Math.max(-0.38, Math.min(0.38, -cursorVx * 0.0003));
+          this.dragStretchY += (targetStretchY - this.dragStretchY) * 0.35;
+          this.dragStretchX += (targetStretchX - this.dragStretchX) * 0.35;
+          this.dragAngle += (targetAngle - this.dragAngle) * 0.35;
+        } else {
+          // Suspendu presque immobile dans les airs : petit balancement mignon
+          this.dangleTimer += 0.09;
+          const dangleSway = Math.sin(this.dangleTimer * 4.5) * 0.09;
+          const targetStretchY = 1.15;
+          const targetStretchX = 0.88;
+          this.dragStretchY += (targetStretchY - this.dragStretchY) * 0.18;
+          this.dragStretchX += (targetStretchX - this.dragStretchX) * 0.18;
+          this.dragAngle += (dangleSway - this.dragAngle) * 0.22;
+        }
 
         // Détection de secousses (va-et-vient rapides gauche/droite)
-        const now = performance.now();
-        if (Math.abs(dx) >= 8) {
+        if (Math.abs(dx) >= 7) {
           const dir = Math.sign(dx);
           if (dir !== this.lastDragDeltaDir && this.lastDragDeltaDir !== 0) {
             if (now - this.lastDragDeltaTimestamp < 380) {
@@ -440,7 +481,7 @@ export class PetActor {
           this.lastDragDeltaTimestamp = now;
         }
 
-        if (Math.abs(dx) > 1.5) {
+        if (Math.abs(dx) > 1.2) {
           this.flipX = dx < 0;
         }
         return;
@@ -526,6 +567,7 @@ export class PetActor {
     const wasDragged = this.hasDragged;
     const shakeCount = this.dragShakeCounter;
     const maxSpeed = this.dragSpeeds.length > 0 ? Math.max(...this.dragSpeeds) : 0;
+    const floorY = this.getCurrentFloorY();
 
     this.pointerDown = false;
     this.isDragging = false;
@@ -534,28 +576,58 @@ export class PetActor {
     this.dragSpeeds = [];
 
     if (wasDragged) {
-      // Rebond d'écrasement comique à l'atterrissage (squash)
-      this.dragStretchY = 0.74;
-      this.dragStretchX = 1.26;
+      let throwVx = 0;
+      let throwVy = 0;
+      if (this.dragHistory.length >= 2) {
+        const first = this.dragHistory[0];
+        const last = this.dragHistory[this.dragHistory.length - 1];
+        const dtSec = Math.max(0.016, (last.time - first.time) / 1000);
+        if (performance.now() - last.time < 160) {
+          throwVx = (last.x - first.x) / dtSec;
+          throwVy = (last.y - first.y) / dtSec;
+        }
+      }
+      this.dragHistory = [];
 
+      const throwSpeed = Math.hypot(throwVx, throwVy);
       let dropType: 'shake' | 'fast' | 'gentle' = 'gentle';
       if (shakeCount >= 4) {
         dropType = 'shake';
-      } else if (maxSpeed > 18) {
+      } else if (throwSpeed > 450 || maxSpeed > 18) {
         dropType = 'fast';
       } else {
         dropType = 'gentle';
       }
+      this.pendingDropType = dropType;
 
-      this.callbacks.onPositionChanged(this.x, this.y);
-      this.callbacks.onPetDropped?.(dropType, this.x, this.y);
+      const isThrownOrHigh = throwSpeed > 120 || this.y < floorY - 14;
+      if (isThrownOrHigh) {
+        // ENTRÉE EN VOL BALISTIQUE SOUS GRAVITÉ (Lancé / Jeté) !
+        this.isAirborne = true;
+        this.vx = Math.max(-1400, Math.min(1400, throwVx * 0.95));
+        this.vy = Math.max(-1300, Math.min(1100, throwVy * 0.95));
+        if (Math.abs(this.vx) > 30) {
+          this.flipX = this.vx < 0;
+        }
+      } else {
+        // Posé calmement au sol
+        this.y = floorY;
+        this.vx = 0;
+        this.vy = 0;
+        this.isAirborne = false;
+        this.dragStretchY = 0.76;
+        this.dragStretchX = 1.24;
+        this.callbacks.onPositionChanged(this.x, this.y);
+        this.callbacks.onPetDropped?.(dropType, this.x, this.y);
+        this.pendingDropType = null;
+      }
     } else {
       this.callbacks.onClick();
     }
   }
 
   /**
-   * Met à jour la physique (chute au sol, perchoir sur fenêtre active) et l'IA autonome.
+   * Met à jour la physique (vol balistique avec gravité, chute, rebonds et IA autonome).
    */
   public update(dtSeconds: number, options: { canWalk: boolean }): void {
     const safeDt = Math.min(0.1, Math.max(0, dtSeconds));
@@ -563,7 +635,7 @@ export class PetActor {
 
     // Retour progressif des dimensions de squash & stretch vers 1.0
     if (!this.isDragging) {
-      const springK = Math.min(1, 10 * safeDt);
+      const springK = Math.min(1, 12 * safeDt);
       this.dragStretchX += (1.0 - this.dragStretchX) * springK;
       this.dragStretchY += (1.0 - this.dragStretchY) * springK;
       this.dragAngle += (0 - this.dragAngle) * Math.min(1, 12 * safeDt);
@@ -571,6 +643,96 @@ export class PetActor {
 
     if (this.isDragging) {
       this.isMoving = false;
+      return;
+    }
+
+    // 0) Physique de vol libre & gravité réelle (familier jeté / lancé ou en chute)
+    if (this.isAirborne) {
+      const gravity = 920; // px/s^2
+      this.vy += gravity * safeDt;
+      this.vx *= Math.pow(0.86, safeDt * 10);
+
+      this.x += this.vx * safeDt;
+      this.y += this.vy * safeDt;
+
+      // Rebond élastique sur les parois latérales de l'écran
+      const minX = 35;
+      const maxX = window.innerWidth - 35;
+      if (this.x <= minX) {
+        this.x = minX;
+        this.vx = -this.vx * 0.65;
+        this.dragStretchX = 0.72;
+        this.dragStretchY = 1.28;
+      } else if (this.x >= maxX) {
+        this.x = maxX;
+        this.vx = -this.vx * 0.65;
+        this.dragStretchX = 0.72;
+        this.dragStretchY = 1.28;
+      }
+
+      // Rebond sur le haut de l'écran
+      if (this.y <= 30) {
+        this.y = 30;
+        this.vy = Math.abs(this.vy) * 0.55;
+      }
+
+      // Déformation dynamique selon la trajectoire de vol
+      const flightSpeed = Math.hypot(this.vx, this.vy);
+      const targetStretchY = 1.0 + Math.min(0.38, flightSpeed * 0.0003);
+      const targetStretchX = Math.max(0.66, 1.0 / targetStretchY);
+      const targetAngle = Math.max(-0.45, Math.min(0.45, this.vx * 0.00032));
+      this.dragStretchY += (targetStretchY - this.dragStretchY) * Math.min(1, 14 * safeDt);
+      this.dragStretchX += (targetStretchX - this.dragStretchX) * Math.min(1, 14 * safeDt);
+      this.dragAngle += (targetAngle - this.dragAngle) * Math.min(1, 14 * safeDt);
+      if (Math.abs(this.vx) > 20) {
+        this.flipX = this.vx < 0;
+      }
+
+      // Détection d'atterrissage sur le perchoir de la fenêtre active
+      if (this.activeWindow && this.isValidPerchWindow(this.activeWindow) && this.vy > 0) {
+        const perchY = this.getPerchY(this.activeWindow);
+        const winMinX = Math.max(20, this.activeWindow.x);
+        const winMaxX = Math.min(window.innerWidth - 20, this.activeWindow.x + this.activeWindow.width);
+        if (Math.abs(this.y - perchY) <= 22 && this.x >= winMinX && this.x <= winMaxX) {
+          this.y = perchY;
+          this.vy = 0;
+          this.vx = 0;
+          this.isAirborne = false;
+          this.isPerchingOnWindow = true;
+          this.targetPerchY = perchY;
+          this.perchDurationTimer = 16 + Math.random() * 12;
+          this.dragStretchY = 0.74;
+          this.dragStretchX = 1.26;
+          this.callbacks.onPositionChanged(this.x, this.y);
+          this.callbacks.onWindowPerchLand?.(this.activeWindow.title);
+          this.pendingDropType = null;
+          return;
+        }
+      }
+
+      // Atterrissage et rebond sur le sol
+      if (this.y >= floorY) {
+        this.y = floorY;
+        if (Math.abs(this.vy) > 130) {
+          // Rebond comique et élastique
+          this.vy = -this.vy * 0.42;
+          this.vx *= 0.62;
+          this.dragStretchY = Math.max(0.52, 1.0 - Math.abs(this.vy) * 0.001);
+          this.dragStretchX = Math.min(1.48, 1.0 + Math.abs(this.vy) * 0.001);
+        } else {
+          // Stabilisation au sol
+          this.vy = 0;
+          this.vx = 0;
+          this.isAirborne = false;
+          this.dragStretchY = 0.76;
+          this.dragStretchX = 1.24;
+          this.callbacks.onPositionChanged(this.x, this.y);
+          if (this.pendingDropType) {
+            this.callbacks.onPetDropped?.(this.pendingDropType, this.x, this.y);
+            this.pendingDropType = null;
+          }
+        }
+      }
       return;
     }
 

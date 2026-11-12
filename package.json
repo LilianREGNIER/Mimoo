@@ -32,6 +32,19 @@
       "assets/**/*",
       "package.json"
     ],
+    "asarUnpack": [
+      "assets/bin/**/*",
+      "dist/assets/bin/**/*"
+    ],
+    "extraResources": [
+      {
+        "from": "assets/bin",
+        "to": "bin",
+        "filter": [
+          "**/*"
+        ]
+      }
+    ],
     "win": {
       "signAndEditExecutable": false,
       "target": [
