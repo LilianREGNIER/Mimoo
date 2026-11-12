@@ -37,11 +37,13 @@ export class PcActivityTracker {
   private hookProcess: ChildProcess | null = null;
   private lastCursorPoint: { x: number; y: number } | null = null;
   private currentActiveWindow: ActiveWindowInfo | null = null;
+  private currentMusicPlaying = false;
   private pendingBatch: PcActivityBatch = {
     mouseClicks: 0,
     keyPresses: 0,
     activeSeconds: 0,
     activeWindow: null,
+    isMusicPlaying: false,
   };
 
   constructor(windowOrGetter: BrowserWindow | (() => BrowserWindow | null)) {
@@ -109,12 +111,23 @@ export class PcActivityTracker {
               clicks?: number;
               keys?: number;
               window?: ActiveWindowInfo | null;
+              music?: boolean;
             };
             if (typeof parsed.clicks === 'number' && parsed.clicks > 0) {
               this.pendingBatch.mouseClicks += parsed.clicks;
             }
             if (typeof parsed.keys === 'number' && parsed.keys > 0) {
               this.pendingBatch.keyPresses += parsed.keys;
+            }
+            if (typeof parsed.music === 'boolean') {
+              this.pendingBatch.isMusicPlaying = parsed.music;
+              if (this.currentMusicPlaying !== parsed.music) {
+                this.currentMusicPlaying = parsed.music;
+                const win = this.getWindow();
+                if (win && !win.isDestroyed() && !win.webContents.isDestroyed()) {
+                  win.webContents.send('pet:music-state-changed', parsed.music);
+                }
+              }
             }
             if ('window' in parsed) {
               const newWin = parsed.window ?? null;
@@ -235,6 +248,7 @@ export class PcActivityTracker {
       keyPresses,
       activeSeconds,
       activeWindow: this.currentActiveWindow,
+      isMusicPlaying: this.currentMusicPlaying,
     };
 
     this.pendingBatch = {
@@ -242,6 +256,7 @@ export class PcActivityTracker {
       keyPresses: 0,
       activeSeconds: 0,
       activeWindow: this.currentActiveWindow,
+      isMusicPlaying: this.currentMusicPlaying,
     };
 
     const win = this.getWindow();

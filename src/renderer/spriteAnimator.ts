@@ -110,6 +110,9 @@ export interface RenderPetParams {
     accessory: string | null;
     aura: string | null;
   };
+  dragScaleX?: number;
+  dragScaleY?: number;
+  dragAngle?: number;
 }
 
 export const ALL_FORMS: readonly FormId[] = [
@@ -450,6 +453,10 @@ export class SpriteAnimator {
   public setActiveDialogueProp(type: DialoguePropType, durationMs: number = 3600): void {
     this.activeDialogueProp = type;
     this.dialoguePropRemainingMs = durationMs;
+  }
+
+  public spawnDialogueProp(type: DialoguePropType, durationMs: number = 3600): void {
+    this.setActiveDialogueProp(type, durationMs);
   }
 
   /** Retourne l'accessoire de dialogue actuellement affiché, le cas échéant. */
@@ -868,11 +875,17 @@ export class SpriteAnimator {
       const sx = col * SPRITE_FRAME_WIDTH;
       const sy = row * SPRITE_FRAME_HEIGHT;
 
+      const dragScaleX = params.dragScaleX ?? 1;
+      const dragScaleY = params.dragScaleY ?? 1;
+      const dragAngle = params.dragAngle ?? 0;
+
       ctx.save();
       ctx.translate(Math.round(renderX), Math.round(renderY));
-      if (flipX && formId !== 'egg') {
-        ctx.scale(-1, 1);
+      if (dragAngle !== 0) {
+        ctx.rotate(dragAngle);
       }
+      const scaleXSign = flipX && formId !== 'egg' ? -1 : 1;
+      ctx.scale(scaleXSign * dragScaleX, dragScaleY);
       ctx.imageSmoothingEnabled = false;
       ctx.drawImage(
         sheet,

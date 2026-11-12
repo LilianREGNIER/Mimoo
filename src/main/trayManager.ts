@@ -134,8 +134,8 @@ export class TrayManager {
         click: () => this.sendTrayAction('toggle-pomodoro'),
       },
       {
-        label: '🎵 Mode Musique / Casque Audio',
-        click: () => this.sendTrayAction('toggle-music-mode'),
+        label: '🐾 Sauter sur la fenêtre active',
+        click: () => this.sendTrayAction('jump-active-window'),
       },
       { type: 'separator' },
       {

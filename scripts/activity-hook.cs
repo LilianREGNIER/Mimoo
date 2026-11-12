@@ -15,7 +15,10 @@ class Program {
 
     private static int clickCount = 0;
     private static int keyCount = 0;
-    private static string lastWindowJson = "";
+    private static string lastWindowJson = "null";
+    private static string lastValidWindowJson = "null";
+    private static bool lastMusicState = false;
+    private static int heartbeatTick = 0;
 
     private delegate IntPtr LowLevelProc(int nCode, IntPtr wParam, IntPtr lParam);
     private static LowLevelProc mouseProc = MouseHookCallback;
@@ -68,6 +71,14 @@ class Program {
     [DllImport("user32.dll", CharSet = CharSet.Auto, SetLastError = true)]
     private static extern int GetWindowText(IntPtr hWnd, StringBuilder lpString, int nMaxCount);
 
+    [DllImport("user32.dll")]
+    private static extern bool EnumWindows(EnumWindowsProc lpEnumFunc, IntPtr lParam);
+    private delegate bool EnumWindowsProc(IntPtr hWnd, IntPtr lParam);
+
+    [DllImport("user32.dll")]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool IsWindowVisible(IntPtr hWnd);
+
     [StructLayout(LayoutKind.Sequential)]
     private struct RECT {
         public int Left;
@@ -87,6 +98,35 @@ class Program {
         public int pt_y;
     }
 
+    private static bool isMusicFound = false;
+
+    private static bool CheckMusicCallback(IntPtr hWnd, IntPtr lParam) {
+        if (!IsWindowVisible(hWnd)) return true;
+        StringBuilder sb = new StringBuilder(256);
+        GetWindowText(hWnd, sb, 256);
+        string title = sb.ToString();
+        if (string.IsNullOrEmpty(title)) return true;
+
+        string lower = title.ToLowerInvariant();
+
+        // 1) YouTube Music, SoundCloud, Deezer, Apple Music, Tidal
+        if (lower.Contains("youtube music") || lower.Contains("soundcloud") ||
+            lower.Contains("deezer") || lower.Contains("apple music") ||
+            lower.Contains("tidal") || lower.Contains("qobuz")) {
+            isMusicFound = true;
+            return false;
+        }
+
+        // 2) Spotify : quand une chanson joue, le titre est sous la forme "Artiste - Titre"
+        // Quand Spotify est en pause ou fermé, le titre est "Spotify", "Spotify Free", "Spotify Premium"
+        if (lower.Contains("spotify") && title.Contains(" - ")) {
+            isMusicFound = true;
+            return false;
+        }
+
+        return true;
+    }
+
     static void Main(string[] args) {
         using (Process curProcess = Process.GetCurrentProcess())
         using (ProcessModule curModule = curProcess.MainModule) {
@@ -98,39 +138,73 @@ class Program {
         Timer reportTimer = new Timer((e) => {
             int c = Interlocked.Exchange(ref clickCount, 0);
             int k = Interlocked.Exchange(ref keyCount, 0);
+            heartbeatTick++;
 
-            string windowJson = "null";
+            // 1. Détection de la fenêtre active au premier plan
+            string windowJson = lastValidWindowJson;
             try {
                 IntPtr fg = GetForegroundWindow();
                 if (fg != IntPtr.Zero) {
-                    RECT r;
-                    if (GetWindowRect(fg, out r)) {
-                        int w = r.Right - r.Left;
-                        int h = r.Bottom - r.Top;
-                        if (w > 120 && h > 80 && r.Left > -10000 && r.Top > -10000) {
-                            StringBuilder sb = new StringBuilder(256);
-                            GetWindowText(fg, sb, 256);
-                            string rawTitle = sb.ToString()
-                                .Replace("\\", "\\\\")
-                                .Replace("\"", "\\\"")
-                                .Replace("\r", "")
-                                .Replace("\n", "");
-                            windowJson = string.Format(
-                                "{{\"title\":\"{0}\",\"x\":{1},\"y\":{2},\"width\":{3},\"height\":{4}}}",
-                                rawTitle, r.Left, r.Top, w, h
-                            );
+                    StringBuilder sb = new StringBuilder(256);
+                    GetWindowText(fg, sb, 256);
+                    string rawTitle = sb.ToString().Trim();
+
+                    // Ignorer notre propre overlay et les composants système sans intérêt
+                    bool isOwnApp = rawTitle.IndexOf("Tamagotchi", StringComparison.OrdinalIgnoreCase) >= 0;
+                    bool isSystem = rawTitle == "Program Manager" || rawTitle == "Desktop" || string.IsNullOrEmpty(rawTitle);
+
+                    if (!isOwnApp && !isSystem) {
+                        RECT r;
+                        if (GetWindowRect(fg, out r)) {
+                            int rawW = r.Right - r.Left;
+                            int rawH = r.Bottom - r.Top;
+                            if (rawW >= 160 && rawH >= 100 && r.Left > -10000 && r.Top > -10000) {
+                                int x = Math.Max(0, r.Left);
+                                int y = Math.Max(0, r.Top);
+                                int w = Math.Max(160, rawW);
+                                int h = Math.Max(100, rawH);
+
+                                string safeTitle = rawTitle
+                                    .Replace("\\", "\\\\")
+                                    .Replace("\"", "\\\"")
+                                    .Replace("\r", "")
+                                    .Replace("\n", "");
+
+                                windowJson = string.Format(
+                                    "{{\"title\":\"{0}\",\"x\":{1},\"y\":{2},\"width\":{3},\"height\":{4}}}",
+                                    safeTitle, x, y, w, h
+                                );
+                                lastValidWindowJson = windowJson;
+                            }
                         }
                     }
                 }
             } catch {
-                windowJson = "null";
+                windowJson = lastValidWindowJson;
+            }
+
+            // 2. Détection automatique de musique (YouTube Music, Spotify, SoundCloud, Deezer, etc.)
+            isMusicFound = false;
+            try {
+                EnumWindows(CheckMusicCallback, IntPtr.Zero);
+            } catch {
+                isMusicFound = false;
             }
 
             bool hasActivity = (c > 0 || k > 0);
             bool windowChanged = (windowJson != lastWindowJson);
-            if (hasActivity || windowChanged) {
+            bool musicChanged = (isMusicFound != lastMusicState);
+            bool heartbeat = (heartbeatTick >= 4); // Toutes les 2 secondes au moins
+
+            if (hasActivity || windowChanged || musicChanged || heartbeat) {
+                heartbeatTick = 0;
                 lastWindowJson = windowJson;
-                Console.WriteLine(string.Format("{{\"clicks\":{0},\"keys\":{1},\"window\":{2}}}", c, k, windowJson));
+                lastMusicState = isMusicFound;
+
+                Console.WriteLine(string.Format(
+                    "{{\"clicks\":{0},\"keys\":{1},\"window\":{2},\"music\":{3}}}",
+                    c, k, windowJson, isMusicFound ? "true" : "false"
+                ));
             }
         }, null, 500, 500);
 

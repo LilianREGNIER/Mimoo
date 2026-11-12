@@ -178,6 +178,8 @@ class DesktopPetRendererApp {
   // Dialogues spontanés ("de temps en temps, juste comme ça")
   private lastAutonomousDialogueTimestamp = performance.now();
   private nextAutonomousDialogueDelayMs = 24_000 + Math.random() * 26_000;
+  private lastKeyDialogueTimestamp = 0;
+  private lastClickDialogueTimestamp = 0;
   private readonly shopItemsGridEl = document.getElementById('shop-items-grid');
   private readonly shopCoinsValEl = document.getElementById('shop-coins-val');
   private readonly hudCoinsCountEl = document.getElementById('hud-coins-count');
@@ -276,6 +278,9 @@ class DesktopPetRendererApp {
         this.showSpeechBubble("Hihi ! Tu bouges vite ! 😄", 2000);
         this.engine.boostHappiness(2);
       },
+      onPetDropped: (dropType, x, y) => this.handlePetDropped(dropType, x, y),
+      onWindowPerchJump: (winTitle) => this.handleWindowPerchJump(winTitle),
+      onWindowPerchLand: (winTitle) => this.handleWindowPerchLand(winTitle),
     });
 
     this.petActor.setScales(initialSpecies?.scale ?? 1, settings.petScale ?? 1);
@@ -690,6 +695,9 @@ class DesktopPetRendererApp {
       cursorX: this.petActor.lastCursorX,
       cursorY: this.petActor.lastCursorY,
       equippedCosmetics: pet.equippedCosmetics,
+      dragScaleX: this.petActor.getDragStretchX(),
+      dragScaleY: this.petActor.getDragStretchY(),
+      dragAngle: this.petActor.getDragAngle(),
     });
 
     // Rendu du pet ami en visite sur le bureau
@@ -1163,11 +1171,33 @@ class DesktopPetRendererApp {
       this.petActor.setActiveWindow(windowInfo);
     });
 
+    window.petAPI?.onMusicStateChanged?.((isPlaying: boolean) => {
+      this.toggleMusicMode(isPlaying);
+    });
+
     window.petAPI?.onPcActivityBatch?.((batch) => {
       this.hasMainPcActivityHook = true;
       if (batch.activeWindow !== undefined) {
         this.petActor.setActiveWindow(batch.activeWindow);
       }
+      if (batch.isMusicPlaying !== undefined && batch.isMusicPlaying !== this.isMusicMode) {
+        this.toggleMusicMode(batch.isMusicPlaying);
+      }
+
+      // Commentaires contextuels en temps réel si activité mesurée
+      const now = Date.now();
+      if (batch.keyPresses >= 25 && now - this.lastKeyDialogueTimestamp > 120_000 && !this.engine.getState().isSleeping) {
+        this.lastKeyDialogueTimestamp = now;
+        this.animator.spawnDialogueProp('keyboard', 3200);
+        this.animator.spawnParticles('sparkle', this.petActor.x, this.petActor.y - 15, 6);
+        this.showSpeechBubble("Wouah, tu tapes super vite sur ton clavier ! ⌨️✨", 3600);
+      } else if (batch.mouseClicks >= 18 && now - this.lastClickDialogueTimestamp > 120_000 && !this.engine.getState().isSleeping) {
+        this.lastClickDialogueTimestamp = now;
+        this.animator.spawnDialogueProp('dance', 3000);
+        this.animator.spawnParticles('star', this.petActor.x, this.petActor.y - 15, 6);
+        this.showSpeechBubble("Clic clic clic ! Tu es hyper rapide avec ta souris ! 🖱️💨", 3600);
+      }
+
       const res = this.engine.recordPcActivity(batch, Date.now());
       if (res.evolved && res.newForm) {
         this.handleEvolutionTriggered(res.newForm);
@@ -1227,8 +1257,8 @@ class DesktopPetRendererApp {
       case 'stop-pomodoro':
         this.stopPomodoroSession();
         break;
-      case 'toggle-music-mode':
-        this.toggleMusicMode();
+      case 'jump-active-window':
+        this.petActor.forcePerchOnActiveWindow();
         break;
       case 'toggle-sleep':
         this.handleToggleSleep();
@@ -1364,17 +1394,83 @@ class DesktopPetRendererApp {
     }
 
     const result = this.engine.pet(Date.now());
-    this.animator.setState('happy', 1300);
-    this.animator.spawnParticles('heart', x, y, result.bonusApplied ? 5 : 3);
+    this.animator.setState('happy', 1400);
+    this.animator.spawnParticles('heart', x, y, result.bonusApplied ? 6 : 4);
+    if (fromCursorRub) {
+      this.animator.spawnParticles('sparkle', x, y - 10, 3);
+    }
 
-    if (result.bonusApplied) {
+    if (fromCursorRub) {
+      const caressPhrases = [
+        'Ronron... 💕 C’est tellement doux tes caresses !',
+        'Mmh, pile derrière les oreilles ! 🥰',
+        'Hihi, ça chatouille un peu mais j’adore ! ✨',
+        'Encore des papouilles s’il te plaît ! 💖',
+      ];
+      this.showSpeechBubble(caressPhrases[Math.floor(Math.random() * caressPhrases.length)], 2800);
+    } else if (result.bonusApplied) {
       this.showSpeechBubble('Ronron... J’adore les caresses ! 💖');
-    } else if (!fromCursorRub) {
+    } else {
       this.showSpeechBubble('Merci pour ce câlin tout doux ! 🤗💖');
     }
 
     this.refreshAllPanelsUI();
     void this.persistSaveState();
+  }
+
+  private handlePetDropped(dropType: 'gentle' | 'fast' | 'shake', x: number, y: number): void {
+    const pet = this.engine.getState();
+    if (pet.stage === 'egg') return;
+
+    if (dropType === 'shake') {
+      this.animator.setState('sad', 2400);
+      this.animator.spawnParticles('star', x, y - 20, 8);
+      this.animator.spawnDialogueProp('coffee_cup', 2200);
+      const shakePhrases = [
+        "Ouh là là, ça tourne... J'ai le tournis ! 🌀😵",
+        "Wouah ! Doucement les secousses, mes pattes tournent ! 😵💫",
+        "Pfiou... la terre tourne encore un peu ! 🌀",
+      ];
+      this.showSpeechBubble(shakePhrases[Math.floor(Math.random() * shakePhrases.length)], 3500);
+    } else if (dropType === 'fast') {
+      this.animator.setState('play', 2000);
+      this.animator.spawnParticles('sparkle', x, y - 15, 6);
+      this.animator.spawnDialogueProp('tennis_ball', 2000);
+      const fastPhrases = [
+        "Wouah, ça c'était rapide ! 💨 Atterrissage contrôlé !",
+        "Vitesse maximale atteinte ! 🚀 Merci pour le voyage express !",
+        "Hop là ! Vol supersonique réussi ! 💨✨",
+      ];
+      this.showSpeechBubble(fastPhrases[Math.floor(Math.random() * fastPhrases.length)], 3500);
+    } else {
+      this.animator.setState('happy', 1800);
+      this.animator.spawnParticles('heart', x, y - 20, 4);
+      const gentlePhrases = [
+        "Hop là, merci de me déposer ici en douceur ! ✨",
+        "Parfait, ce petit coin de bureau me va très bien ! 🌸",
+        "Atterrissage tout doux réussi ! 💕",
+      ];
+      this.showSpeechBubble(gentlePhrases[Math.floor(Math.random() * gentlePhrases.length)], 3200);
+    }
+    this.hitTester.refresh();
+  }
+
+  private handleWindowPerchJump(windowTitle: string): void {
+    const pet = this.engine.getState();
+    if (pet.stage === 'egg') return;
+    this.animator.setState('play', 1200);
+    this.animator.spawnParticles('sparkle', this.petActor.x, this.petActor.y - 15, 5);
+    const shortTitle = windowTitle.length > 25 ? windowTitle.slice(0, 22) + '...' : windowTitle;
+    this.showSpeechBubble(`Hop là ! Je saute sur ta fenêtre « ${shortTitle} » ! 🐾`, 2600);
+  }
+
+  private handleWindowPerchLand(windowTitle: string): void {
+    const pet = this.engine.getState();
+    if (pet.stage === 'egg') return;
+    this.animator.setState('happy', 2200);
+    this.animator.spawnParticles('star', this.petActor.x, this.petActor.y - 20, 6);
+    const shortTitle = windowTitle.length > 25 ? windowTitle.slice(0, 22) + '...' : windowTitle;
+    this.showSpeechBubble(`Me voilà bien perché au-dessus de « ${shortTitle} » ! 👀✨`, 3400);
   }
 
   private handleToggleSleep(): void {
@@ -1574,14 +1670,6 @@ class DesktopPetRendererApp {
         durationMs: 3800,
       },
       {
-        text: 'Tu tapes super vite sur ton clavier ! ⌨️✨',
-        animState: 'play',
-        prop: 'keyboard',
-        particleKind: 'keyboard',
-        particleCount: 6,
-        durationMs: 3600,
-      },
-      {
         text: 'Si tu as besoin d’une pause, je suis toujours prêt pour jouer ! 🎾',
         animState: 'play',
         prop: 'tennis_ball',
@@ -1613,8 +1701,9 @@ class DesktopPetRendererApp {
         durationMs: 3600,
       },
       {
-        text: 'J’adore regarder ta souris voyager sur l’écran ! 🐭',
-        animState: 'play',
+        text: 'Une grande respiration... et on repart du bon pied ! 🌸',
+        animState: 'happy',
+        prop: 'sun',
         particleKind: 'sparkle',
         particleCount: 5,
         durationMs: 3600,
@@ -2006,18 +2095,22 @@ class DesktopPetRendererApp {
   }
 
   private toggleMusicMode(force?: boolean): void {
+    const nextMode = force !== undefined ? force : !this.isMusicMode;
+    if (nextMode === this.isMusicMode) return;
+    this.isMusicMode = nextMode;
+    this.animator.setMusicMode(this.isMusicMode);
+
     const pet = this.engine.getState();
     if (pet.stage === 'egg') {
-      this.showSpeechBubble("L'œuf écoutera de la musique une fois éclos ! 🥚🎶", 2500);
       return;
     }
-    this.isMusicMode = force !== undefined ? force : !this.isMusicMode;
-    this.animator.setMusicMode(this.isMusicMode);
+
     if (this.isMusicMode) {
-      this.showSpeechBubble("Mode Musique activé ! 🎧🎶 En rythme !", 3000);
-      this.animator.spawnParticles('sparkle', this.petActor.x, this.petActor.y - 30, 6);
+      this.showSpeechBubble("J'adore cette musique ! 🎧🎶 En rythme !", 3400);
+      this.animator.spawnDialogueProp('headphones', 3000);
+      this.animator.spawnParticles('sparkle', this.petActor.x, this.petActor.y - 30, 8);
     } else {
-      this.showSpeechBubble("Casque audio rangé ! 🎧", 2000);
+      this.showSpeechBubble("Musique terminée, casque rangé ! 🎧", 2200);
     }
   }
 
@@ -3125,6 +3218,15 @@ class DesktopPetRendererApp {
     });
     document.getElementById('btn-sb-add-coins')?.addEventListener('click', () => {
       this.runSandboxSimulation('add_coins', "🪙 +1 000 TamaCoins ajoutés à votre tirelire !");
+    });
+    document.getElementById('btn-sb-jump-window')?.addEventListener('click', () => {
+      const jumped = this.petActor.forcePerchOnActiveWindow();
+      if (!jumped) {
+        this.showSpeechBubble("Aucune fenêtre active détectée sous Windows pour y sauter !", 3000);
+      }
+    });
+    document.getElementById('btn-sb-toggle-music')?.addEventListener('click', () => {
+      this.toggleMusicMode();
     });
     document.getElementById('btn-sb-sim-restore')?.addEventListener('click', () => {
       this.runSandboxSimulation('full_restore', "✨ Toutes les jauges ont été restaurées à 100% !");

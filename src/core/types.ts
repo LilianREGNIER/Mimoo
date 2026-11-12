@@ -410,7 +410,7 @@ export type TrayActionType =
   | 'toggle-pomodoro'
   | 'stop-pomodoro'
   | 'play-fetch'
-  | 'toggle-music-mode'
+  | 'jump-active-window'
   | 'center-pet'
   | 'reset-pet';
 
@@ -420,6 +420,7 @@ export interface PcActivityBatch {
   keyPresses: number;
   activeSeconds: number;
   activeWindow?: ActiveWindowInfo | null;
+  isMusicPlaying?: boolean;
 }
 
 /** Charge utile initiale renvoyée au Renderer lors de l'initialisation IPC. */
@@ -472,6 +473,8 @@ export interface PetIPCContract {
   ): () => void;
   /** Écoute spécifiquement les changements de la fenêtre active au premier plan sous Windows. */
   onActiveWindowChanged?(callback: (windowInfo: ActiveWindowInfo | null) => void): () => void;
+  /** Écoute les changements d'état d'écoute musicale (YouTube Music, Spotify, etc.). */
+  onMusicStateChanged?(callback: (isPlaying: boolean) => void): () => void;
 }
 
 declare global {

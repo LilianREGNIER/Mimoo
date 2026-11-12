@@ -1,6 +1,7 @@
 /**
  * Physique, IA de déplacement autonome sur le bureau et interactions souris
- * (Glisser-déposer, caresse au curseur, brossage à l'éponge, clic simple et regard vers la souris).
+ * (Glisser-déposer réaliste avec étirement/rebond, caresse au curseur par va-et-vient,
+ * brossage à l'éponge, lancer de balle et escalade sur les fenêtres actives Windows).
  */
 
 import type { ActiveWindowInfo } from '../core';
@@ -16,7 +17,7 @@ export interface BoundingBox {
 export interface PetActorCallbacks {
   /** Déclenché lors d'un clic simple sur le familier (éclosion de l'œuf ou ouverture/fermeture du HUD). */
   onClick: () => void;
-  /** Déclenché lorsque l'utilisateur caresse le familier en frottant la souris dessus. */
+  /** Déclenché lorsque l'utilisateur caresse le familier en frottant la souris dessus avec un vrai va-et-vient. */
   onPetRub: (x: number, y: number) => void;
   /** Déclenché lorsque l'utilisateur frotte le familier avec l'éponge en mode nettoyage. */
   onSpongeScrub?: (scrubDelta: number, cursorX: number, cursorY: number) => void;
@@ -28,10 +29,16 @@ export interface PetActorCallbacks {
   onBallReturned?: () => void;
   /** Déclenché lorsque l'utilisateur agite le curseur de souris devant le familier. */
   onCursorWiggleExcited?: () => void;
+  /** Déclenché lors du relâchement après un Drag & Drop (déplacement doux, rapide ou secoué). */
+  onPetDropped?: (dropType: 'gentle' | 'fast' | 'shake', x: number, y: number) => void;
+  /** Déclenché lorsque le familier saute pour percher sur une fenêtre active. */
+  onWindowPerchJump?: (windowTitle: string) => void;
+  /** Déclenché lorsque le familier atterrit avec succès sur une fenêtre active. */
+  onWindowPerchLand?: (windowTitle: string) => void;
 }
 
 /**
- * Représente l'entité physique du familier évoluant en bas du bureau (`y = window.innerHeight - 95`).
+ * Représente l'entité physique du familier évoluant en bas du bureau ou perché sur les fenêtres.
  */
 export class PetActor {
   public x: number;
@@ -59,7 +66,10 @@ export class PetActor {
   // Interaction avec les fenêtres Windows (Perchoir / Plateforme active)
   private activeWindow: ActiveWindowInfo | null = null;
   private isPerchingOnWindow = false;
-  private perchDecisionTimer = 14.0;
+  private isJumpingToWindow = false;
+  private targetPerchY = 0;
+  private perchDecisionTimer = 4.0;
+  private perchDurationTimer = 0;
 
   // Jeu de la balle (Fetch)
   private isFetchingBall = false;
@@ -72,7 +82,7 @@ export class PetActor {
   private wiggleCounter = 0;
   private lastWiggleTimestamp = 0;
 
-  // Suivi souris (Drag & Drop + Caresse par frottement + Brossage Éponge)
+  // Suivi souris (Drag & Drop + Étirement / Rebond réaliste)
   private pointerDown = false;
   private hasDragged = false;
   private dragStartClientX = 0;
@@ -81,9 +91,19 @@ export class PetActor {
   private dragOffsetY = 0;
   private lastMouseX = 0;
   private lastMouseY = 0;
-  private rubDistanceAccumulator = 0;
-  private lastRubDirection = 0;
-  private lastRubTimestamp = 0;
+  private dragStretchX = 1.0;
+  private dragStretchY = 1.0;
+  private dragAngle = 0;
+  private dragSpeeds: number[] = [];
+  private dragShakeCounter = 0;
+  private lastDragDeltaDir = 0;
+  private lastDragDeltaTimestamp = 0;
+
+  // Caresse par frottement (mouvement réel de va-et-vient requis)
+  private caressStrokeCount = 0;
+  private lastCaressDirection = 0;
+  private lastCaressTimestamp = 0;
+  private caressDistanceAccumulator = 0;
   private spongeDistanceAccumulator = 0;
 
   private readonly callbacks: PetActorCallbacks;
@@ -93,7 +113,6 @@ export class PetActor {
     const groundY = this.getGroundY();
     this.x = this.clampX(Number.isFinite(initialX) ? initialX : window.innerWidth * 0.5);
     this.y = Number.isFinite(initialY) ? Math.min(groundY, Math.max(60, initialY)) : groundY;
-    // Place par défaut sur la ligne de sol du bureau
     this.y = groundY;
   }
 
@@ -105,23 +124,44 @@ export class PetActor {
   }
 
   /**
+   * Calcule la hauteur d'atterrissage sur la bordure supérieure de la fenêtre active.
+   */
+  public getPerchY(win: ActiveWindowInfo): number {
+    return Math.max(30, Math.min(this.getGroundY() - 50, win.y));
+  }
+
+  /**
    * Retourne la ligne de sol courante (sol du bureau ou rebord de la fenêtre active).
    */
   public getCurrentFloorY(): number {
-    if (this.isPerchingOnWindow && this.activeWindow) {
-      return Math.max(60, this.activeWindow.y - 10);
+    if (this.isPerchingOnWindow && this.activeWindow && this.isValidPerchWindow(this.activeWindow)) {
+      return this.getPerchY(this.activeWindow);
     }
     return this.getGroundY();
+  }
+
+  /**
+   * Vérifie si les dimensions et le titre de la fenêtre active correspondent à une vraie fenêtre utilisateur.
+   */
+  public isValidPerchWindow(win: ActiveWindowInfo | null): boolean {
+    if (!win) return false;
+    if (win.width < 160 || win.height < 100) return false;
+    const title = win.title.trim();
+    if (!title || title === 'Program Manager' || title === 'Desktop') return false;
+    if (title.indexOf('Tamagotchi') >= 0) return false;
+    return true;
   }
 
   /**
    * Notifie l'acteur de la géométrie de la fenêtre active au premier plan sous Windows.
    */
   public setActiveWindow(info: ActiveWindowInfo | null): void {
-    this.activeWindow = info;
-    if (this.isPerchingOnWindow) {
-      if (!info || info.y > this.getGroundY() - 75 || info.width < 220 || info.height < 150) {
-        this.isPerchingOnWindow = false;
+    if (info && this.isValidPerchWindow(info)) {
+      this.activeWindow = info;
+    } else if (!info) {
+      // Ne réinitialise pas brutalement pour laisser le temps au familier de terminer son action
+      if (this.isPerchingOnWindow) {
+        this.hopDownFromWindow();
       }
     }
   }
@@ -134,13 +174,69 @@ export class PetActor {
     return this.isCarryingBall;
   }
 
+  public getDragStretchX(): number {
+    return this.dragStretchX;
+  }
+
+  public getDragStretchY(): number {
+    return this.dragStretchY;
+  }
+
+  public getDragAngle(): number {
+    return this.dragAngle;
+  }
+
+  /**
+   * Fait bondir le familier sur le bord supérieur de la fenêtre active.
+   */
+  public jumpToWindow(win: ActiveWindowInfo): void {
+    if (!this.isValidPerchWindow(win)) return;
+    const targetY = this.getPerchY(win);
+    const deltaY = Math.max(15, this.y - targetY);
+
+    // Calcul de l'impulsion verticale pour atteindre exactement le haut de la fenêtre
+    this.vy = -Math.sqrt(2 * 880 * (deltaY + 28));
+    this.targetPerchY = targetY;
+    this.isJumpingToWindow = true;
+    this.isPerchingOnWindow = true;
+    this.perchDurationTimer = 16 + Math.random() * 14;
+
+    const minX = Math.max(30, win.x + 35);
+    const maxX = Math.min(window.innerWidth - 30, win.x + win.width - 35);
+    const targetWinX = minX < maxX ? minX + Math.random() * (maxX - minX) : win.x + win.width / 2;
+    this.targetX = this.clampX(targetWinX);
+    this.callbacks.onWindowPerchJump?.(win.title);
+  }
+
+  /**
+   * Fait redescendre le familier vers le sol du bureau.
+   */
+  public hopDownFromWindow(): void {
+    this.isPerchingOnWindow = false;
+    this.isJumpingToWindow = false;
+    this.perchDecisionTimer = 6 + Math.random() * 8;
+    this.vy = 40;
+  }
+
+  /**
+   * Déclenche immédiatement l'escalade sur la fenêtre active (utile pour tests / boutons).
+   */
+  public forcePerchOnActiveWindow(): boolean {
+    if (!this.activeWindow || !this.isValidPerchWindow(this.activeWindow)) {
+      return false;
+    }
+    this.jumpToWindow(this.activeWindow);
+    return true;
+  }
+
   public startFetchingBall(ballX: number, ballY: number): void {
     this.isFetchingBall = true;
     this.isCarryingBall = false;
     this.ballTargetX = ballX;
     this.ballTargetY = ballY;
     this.targetX = this.clampX(ballX);
-    this.isPerchingOnWindow = false; // Descend pour chercher la balle au sol
+    this.isPerchingOnWindow = false;
+    this.isJumpingToWindow = false;
   }
 
   public updateBallTarget(ballX: number, ballY: number): void {
@@ -157,81 +253,35 @@ export class PetActor {
     this.targetX = null;
   }
 
-  /**
-   * Facteur d'échelle combiné (espèce × préférence utilisateur).
-   */
+  public setScales(speciesScale: number, userScale: number): void {
+    this.speciesScale = Number.isFinite(speciesScale) && speciesScale > 0 ? speciesScale : 1.0;
+    this.userScale = Number.isFinite(userScale) && userScale > 0 ? userScale : 1.0;
+  }
+
+  public setWalkSpeed(speed: number): void {
+    this.walkSpeed = Number.isFinite(speed) && speed > 0 ? speed : 50;
+  }
+
   public getEffectiveScale(): number {
     return this.speciesScale * this.userScale;
   }
 
-  /**
-   * Taille de rendu en pixels du côté du sprite.
-   */
   public getDrawSize(): number {
     return Math.round(SPRITE_FRAME_WIDTH * 1.25 * this.getEffectiveScale());
   }
 
-  /**
-   * Met à jour les facteurs d'échelle du familier.
-   */
-  public setScales(speciesScale: number, userScale: number): void {
-    if (Number.isFinite(speciesScale) && speciesScale > 0) {
-      this.speciesScale = speciesScale;
-    }
-    if (Number.isFinite(userScale) && userScale > 0) {
-      this.userScale = userScale;
-    }
-    this.x = this.clampX(this.x);
-  }
-
-  /**
-   * Met à jour la vitesse de marche (pixels/seconde) selon la forme actuelle.
-   */
-  public setWalkSpeed(speed: number): void {
-    this.walkSpeed = Number.isFinite(speed) && speed >= 0 ? speed : 0;
-  }
-
-  /**
-   * Interrompt immédiatement toute marche autonome en cours.
-   */
-  public stopWalking(): void {
-    this.targetX = null;
-    this.isMoving = false;
-    this.microStepRemaining = 0;
-    this.aiPauseTimer = 3.2;
-  }
-
-  /**
-   * Définit si le familier est en manque de quelque chose ou réclame une action
-   * (faim, saleté, câlin, jeu, sommeil). Si oui, le passage de la souris ne produit aucune réaction.
-   */
-  public setHasActiveDemand(hasDemand: boolean): void {
-    this.hasActiveDemand = Boolean(hasDemand);
-    if (this.hasActiveDemand) {
-      this.isHovering = false;
-      this.rubDistanceAccumulator = 0;
-    }
-  }
-
-  /**
-   * Retourne le rectangle de collision du familier (avec une marge optionnelle confortable).
-   */
-  public getHitBox(margin: number = 14): BoundingBox {
-    const size = this.getDrawSize();
-    const half = size / 2;
+  public getBoundingBox(padding = 0): BoundingBox {
+    const size = this.getDrawSize() + padding * 2;
     return {
-      x: this.x - half - margin,
-      y: this.y - half - margin,
-      width: size + margin * 2,
-      height: size + margin * 2,
+      x: Math.round(this.x - size / 2),
+      y: Math.round(this.y - size / 2),
+      width: size,
+      height: size,
     };
   }
 
-  /**
-   * Teste si le point `(clientX, clientY)` se trouve sur le familier.
-   */
-  public containsPoint(clientX: number, clientY: number, margin: number = 14): boolean {
-    const box = this.getHitBox(margin);
+  public containsPoint(clientX: number, clientY: number, padding = 0): boolean {
+    const box = this.getBoundingBox(padding);
     return (
       clientX >= box.x &&
       clientX <= box.x + box.width &&
@@ -240,26 +290,45 @@ export class PetActor {
     );
   }
 
-  /**
-   * Recentre le familier horizontalement en bas du bureau.
-   */
+  public stopWalking(): void {
+    this.targetX = null;
+    this.isMoving = false;
+    this.aiPauseTimer = 2.0;
+  }
+
   public centerOnScreen(): void {
-    this.x = this.clampX(Math.round(window.innerWidth / 2));
+    this.x = Math.round(window.innerWidth * 0.5);
     this.y = this.getGroundY();
     this.targetX = null;
     this.isMoving = false;
+    this.isPerchingOnWindow = false;
+    this.isJumpingToWindow = false;
     this.vy = 0;
     this.callbacks.onPositionChanged(this.x, this.y);
   }
 
-  /**
-   * Ordonne au familier de marcher vers une coordonnée X (ex: pour attraper une étoile).
-   */
-  public walkToward(x: number): void {
-    if (this.walkSpeed <= 0 || this.isDragging || this.isSpongeMode) {
+  public setPosition(x: number, y?: number): void {
+    this.x = this.clampX(x);
+    if (typeof y === 'number' && Number.isFinite(y)) {
+      this.y = this.clampY(y);
+    }
+    this.targetX = null;
+    this.isMoving = false;
+  }
+
+  public moveTo(x: number): void {
+    if (this.isDragging) {
       return;
     }
     this.targetX = this.clampX(x);
+  }
+
+  public walkToward(x: number): void {
+    this.moveTo(x);
+  }
+
+  public setHasActiveDemand(value: boolean): void {
+    this.hasActiveDemand = value;
   }
 
   /**
@@ -288,12 +357,16 @@ export class PetActor {
     this.dragStartClientY = clientY;
     this.dragOffsetX = this.x - clientX;
     this.dragOffsetY = this.y - clientY;
+    this.dragSpeeds = [];
+    this.dragShakeCounter = 0;
+    this.lastDragDeltaDir = 0;
+    this.lastDragDeltaTimestamp = performance.now();
     this.vy = 0;
     return true;
   }
 
   /**
-   * Gère le déplacement du curseur (Drag & Drop, survol, caresse par frottement et éponge).
+   * Gère le déplacement du curseur (Drag & Drop, survol, caresse douce et éponge).
    */
   public handlePointerMove(clientX: number, clientY: number): void {
     const dx = clientX - this.lastMouseX;
@@ -303,7 +376,7 @@ export class PetActor {
     this.lastCursorX = clientX;
     this.lastCursorY = clientY;
 
-    // Mode Éponge / Brosse : simple passage en va-et-vient sur la zone du familier (sans clic requis)
+    // Mode Éponge / Brosse : simple passage en va-et-vient sur la zone du familier
     if (this.isSpongeMode) {
       this.isHovering = this.containsPoint(clientX, clientY, 90);
       const onPetScrubZone = this.containsPoint(clientX, clientY, 55);
@@ -324,21 +397,49 @@ export class PetActor {
       return;
     }
 
+    // Gestion du Glisser-Déposer (Drag & Drop)
     if (this.pointerDown) {
       const distFromStart = Math.hypot(
         clientX - this.dragStartClientX,
         clientY - this.dragStartClientY
       );
-      if (distFromStart > 6) {
+      if (distFromStart > 5) {
         this.isDragging = true;
         this.hasDragged = true;
         this.targetX = null;
         this.isMoving = false;
+        this.isPerchingOnWindow = false;
+        this.isJumpingToWindow = false;
       }
 
       if (this.isDragging) {
         this.x = this.clampX(clientX + this.dragOffsetX);
         this.y = this.clampY(clientY + this.dragOffsetY);
+
+        const instantSpeed = Math.hypot(dx, dy);
+        this.dragSpeeds.push(instantSpeed);
+        if (this.dragSpeeds.length > 8) {
+          this.dragSpeeds.shift();
+        }
+
+        // Animation d'étirement vertical réaliste (porté par la peau du cou / balancement)
+        this.dragStretchY = Math.min(1.28, this.dragStretchY + 0.05);
+        this.dragStretchX = Math.max(0.78, this.dragStretchX - 0.035);
+        this.dragAngle = Math.max(-0.25, Math.min(0.25, -dx * 0.012));
+
+        // Détection de secousses (va-et-vient rapides gauche/droite)
+        const now = performance.now();
+        if (Math.abs(dx) >= 8) {
+          const dir = Math.sign(dx);
+          if (dir !== this.lastDragDeltaDir && this.lastDragDeltaDir !== 0) {
+            if (now - this.lastDragDeltaTimestamp < 380) {
+              this.dragShakeCounter++;
+            }
+          }
+          this.lastDragDeltaDir = dir;
+          this.lastDragDeltaTimestamp = now;
+        }
+
         if (Math.abs(dx) > 1.5) {
           this.flipX = dx < 0;
         }
@@ -348,46 +449,49 @@ export class PetActor {
 
     const hoveringNow = this.containsPoint(clientX, clientY, 14);
 
-    // Si le pet est en manque de quelque chose ou réclame une action (faim, saleté, câlin, jeu),
-    // il ne se passe STRICTEMENT RIEN lorsqu'on passe la souris sur lui (pas de survol, pas de regard, pas de caresse) !
     if (this.hasActiveDemand) {
       this.isHovering = false;
-      this.rubDistanceAccumulator = 0;
+      this.caressDistanceAccumulator = 0;
+      this.caressStrokeCount = 0;
       return;
     }
 
     this.isHovering = hoveringNow;
 
-    // Détection de la caresse au curseur (frotter la souris sur le familier)
+    // Détection de la vraie caresse au curseur :
+    // Nécessite un véritable mouvement de va-et-vient répété (au moins 3 changements de sens doux)
     if (hoveringNow && !this.pointerDown) {
       const now = performance.now();
       const stepDist = Math.hypot(dx, dy);
 
-      if (stepDist > 1.5 && stepDist < 120) {
-        const currentDir = Math.abs(dx) >= 1 ? Math.sign(dx) : this.lastRubDirection;
-        const directionBonus =
-          currentDir !== 0 &&
-          this.lastRubDirection !== 0 &&
-          currentDir !== this.lastRubDirection
-            ? 28
-            : 0;
-
-        if (now - this.lastRubTimestamp > 1400) {
-          this.rubDistanceAccumulator = 0;
+      if (stepDist >= 1.2 && stepDist <= 32) {
+        if (Math.abs(dx) >= 2.5) {
+          const currentDir = Math.sign(dx);
+          if (currentDir !== this.lastCaressDirection && this.lastCaressDirection !== 0) {
+            if (now - this.lastCaressTimestamp < 1200) {
+              this.caressStrokeCount++;
+            }
+          }
+          this.lastCaressDirection = currentDir;
+          this.lastCaressTimestamp = now;
         }
 
-        this.rubDistanceAccumulator += stepDist + directionBonus;
-        this.lastRubDirection = currentDir;
-        this.lastRubTimestamp = now;
+        if (now - this.lastCaressTimestamp > 1800) {
+          this.caressDistanceAccumulator = 0;
+          this.caressStrokeCount = 0;
+        }
 
-        if (this.rubDistanceAccumulator >= 115) {
-          this.rubDistanceAccumulator = 0;
+        this.caressDistanceAccumulator += stepDist;
+
+        if (this.caressStrokeCount >= 3 && this.caressDistanceAccumulator >= 190) {
+          this.caressStrokeCount = 0;
+          this.caressDistanceAccumulator = 0;
           this.callbacks.onPetRub(this.x, this.y);
         }
       }
     }
 
-    // Détection de secousse / agitation ludique du curseur devant le familier
+    // Détection d'agitation ludique du curseur devant le familier (Wiggle)
     const distToCursor = Math.hypot(clientX - this.x, clientY - this.y);
     if (distToCursor < 140 && !this.pointerDown && !this.hasActiveDemand) {
       const now = performance.now();
@@ -398,7 +502,7 @@ export class PetActor {
             this.wiggleCounter++;
             if (this.wiggleCounter >= 3) {
               this.wiggleCounter = 0;
-              this.vy = -160; // Petit bond joyeux
+              this.vy = -160;
               this.callbacks.onCursorWiggleExcited?.();
             }
           } else {
@@ -420,50 +524,117 @@ export class PetActor {
     }
 
     const wasDragged = this.hasDragged;
+    const shakeCount = this.dragShakeCounter;
+    const maxSpeed = this.dragSpeeds.length > 0 ? Math.max(...this.dragSpeeds) : 0;
+
     this.pointerDown = false;
     this.isDragging = false;
     this.hasDragged = false;
+    this.dragShakeCounter = 0;
+    this.dragSpeeds = [];
 
     if (wasDragged) {
+      // Rebond d'écrasement comique à l'atterrissage (squash)
+      this.dragStretchY = 0.74;
+      this.dragStretchX = 1.26;
+
+      let dropType: 'shake' | 'fast' | 'gentle' = 'gentle';
+      if (shakeCount >= 4) {
+        dropType = 'shake';
+      } else if (maxSpeed > 18) {
+        dropType = 'fast';
+      } else {
+        dropType = 'gentle';
+      }
+
       this.callbacks.onPositionChanged(this.x, this.y);
+      this.callbacks.onPetDropped?.(dropType, this.x, this.y);
     } else {
       this.callbacks.onClick();
     }
   }
 
   /**
-   * Met à jour la physique (redescente douce au sol) et l'IA de marche autonome.
+   * Met à jour la physique (chute au sol, perchoir sur fenêtre active) et l'IA autonome.
    */
   public update(dtSeconds: number, options: { canWalk: boolean }): void {
     const safeDt = Math.min(0.1, Math.max(0, dtSeconds));
     const floorY = this.getCurrentFloorY();
+
+    // Retour progressif des dimensions de squash & stretch vers 1.0
+    if (!this.isDragging) {
+      const springK = Math.min(1, 10 * safeDt);
+      this.dragStretchX += (1.0 - this.dragStretchX) * springK;
+      this.dragStretchY += (1.0 - this.dragStretchY) * springK;
+      this.dragAngle += (0 - this.dragAngle) * Math.min(1, 12 * safeDt);
+    }
 
     if (this.isDragging) {
       this.isMoving = false;
       return;
     }
 
-    // Redescente douce vers la ligne de sol courante (bureau ou perchoir de fenêtre)
-    if (this.y < floorY - 1) {
-      this.vy += 520 * safeDt;
+    // 1) Saut en arc balistique vers le perchoir de la fenêtre active
+    if (this.isJumpingToWindow) {
+      this.vy += 880 * safeDt;
       this.y += this.vy * safeDt;
-      if (this.y >= floorY) {
+
+      if (this.targetX !== null) {
+        const diffX = this.targetX - this.x;
+        const absDiff = Math.abs(diffX);
+        if (absDiff > 2) {
+          const dir = Math.sign(diffX);
+          this.flipX = dir < 0;
+          this.x = this.clampX(this.x + dir * Math.min(absDiff, this.walkSpeed * 2.2 * safeDt));
+        }
+      }
+
+      if ((this.vy >= 0 && this.y >= this.targetPerchY) || this.y <= this.targetPerchY - 8) {
+        this.y = this.targetPerchY;
+        this.vy = 0;
+        this.isJumpingToWindow = false;
+        this.callbacks.onWindowPerchLand?.(this.activeWindow?.title ?? '');
+      }
+      return;
+    }
+
+    // 2) Si le familier est perché sur la fenêtre active
+    if (this.isPerchingOnWindow) {
+      if (!this.activeWindow || !this.isValidPerchWindow(this.activeWindow)) {
+        this.hopDownFromWindow();
+      } else {
+        // Suit la fenêtre si elle est déplacée sur le bureau
+        this.targetPerchY = this.getPerchY(this.activeWindow);
+        this.y = this.targetPerchY;
+
+        this.perchDurationTimer -= safeDt;
+        if (this.perchDurationTimer <= 0) {
+          this.hopDownFromWindow();
+        }
+      }
+    } else {
+      // 3) Redescente douce vers le sol du bureau
+      if (this.y < floorY - 1) {
+        this.vy += 650 * safeDt;
+        this.y += this.vy * safeDt;
+        if (this.y >= floorY) {
+          this.y = floorY;
+          this.vy = 0;
+          this.callbacks.onPositionChanged(this.x, this.y);
+        }
+      } else if (this.y > floorY + 1) {
         this.y = floorY;
         this.vy = 0;
         this.callbacks.onPositionChanged(this.x, this.y);
+      } else {
+        this.y = floorY;
+        this.vy = 0;
       }
-    } else if (this.y > floorY + 1 && !this.isPerchingOnWindow) {
-      this.y = floorY;
-      this.vy = 0;
-      this.callbacks.onPositionChanged(this.x, this.y);
-    } else if (this.y >= floorY - 1) {
-      this.y = floorY;
-      this.vy = 0;
     }
 
     this.x = this.clampX(this.x);
 
-    // 1) Si le familier court chercher la balle lancée (Sprint Fetch)
+    // 4) Si le familier court chercher la balle lancée (Sprint Fetch)
     if (this.isFetchingBall) {
       const sprintSpeed = Math.max(90, this.walkSpeed * 1.85);
       const diffX = this.ballTargetX - this.x;
@@ -484,7 +655,7 @@ export class PetActor {
       return;
     }
 
-    // 2) Si le familier rapporte la balle au joueur
+    // 5) Si le familier rapporte la balle au joueur
     if (this.isCarryingBall) {
       const sprintSpeed = Math.max(80, this.walkSpeed * 1.55);
       const returnTargetX =
@@ -514,35 +685,26 @@ export class PetActor {
       return;
     }
 
-    // Décision autonome de percher / sauter sur la fenêtre active
-    if (this.activeWindow && !this.isDragging) {
-      this.perchDecisionTimer -= safeDt;
-      if (this.perchDecisionTimer <= 0) {
-        this.perchDecisionTimer = 16 + Math.random() * 20;
-        const win = this.activeWindow;
-        const isValidWindow =
-          win.width >= 240 &&
-          win.height >= 160 &&
-          win.y >= 60 &&
-          win.y < this.getGroundY() - 75;
-
-        if (isValidWindow) {
-          if (!this.isPerchingOnWindow && Math.random() < 0.65) {
-            // Saut vers la bordure supérieure de la fenêtre active !
-            this.isPerchingOnWindow = true;
-            this.vy = -340;
-            this.targetX = this.clampX(win.x + win.width * (0.25 + Math.random() * 0.5));
-          } else if (this.isPerchingOnWindow && Math.random() < 0.5) {
-            // Descente vers le sol du bureau
-            this.isPerchingOnWindow = false;
+    // 6) Décision autonome de grimper sur la fenêtre active
+    if (
+      this.activeWindow &&
+      !this.isDragging &&
+      !this.isPerchingOnWindow &&
+      !this.isJumpingToWindow
+    ) {
+      if (this.isValidPerchWindow(this.activeWindow)) {
+        this.perchDecisionTimer -= safeDt;
+        if (this.perchDecisionTimer <= 0) {
+          this.perchDecisionTimer = 4.0 + Math.random() * 5.0;
+          if (Math.random() < 0.85) {
+            this.jumpToWindow(this.activeWindow);
+            return;
           }
-        } else if (this.isPerchingOnWindow) {
-          this.isPerchingOnWindow = false;
         }
       }
     }
 
-    // Déplacement vers la cible active
+    // 7) Déplacement vers la cible active
     if (this.targetX !== null) {
       const diffX = this.targetX - this.x;
       const absDiff = Math.abs(diffX);
@@ -567,7 +729,7 @@ export class PetActor {
       return;
     }
 
-    // En pause (idle) : regarde vers le curseur si la souris s'approche (sauf s'il a une demande active !)
+    // En pause (idle) : regarde vers le curseur si la souris s'approche
     this.isMoving = false;
     if (!this.hasActiveDemand) {
       const distToCursor = Math.hypot(this.lastMouseX - this.x, this.lastMouseY - this.y);
@@ -576,17 +738,15 @@ export class PetActor {
       }
     }
 
-    // Décompte avant la prochaine action autonome
+    // Décompte avant la prochaine action de marche autonome
     this.aiPauseTimer -= safeDt;
     if (this.aiPauseTimer <= 0) {
       const margin = this.getHorizontalMargin();
       const minX = margin;
       const maxX = Math.max(margin + 40, window.innerWidth - margin);
 
-      // Si une série de micro-pas est en cours :
       if (this.microStepRemaining > 0) {
         this.microStepRemaining--;
-        // 60% garde la même direction, 40% change pour faire un petit demi-tour mignon
         if (Math.random() < 0.4) {
           this.lastWanderDir = -this.lastWanderDir;
         }
@@ -596,25 +756,21 @@ export class PetActor {
         return;
       }
 
-      // Décision comportementale variée :
       const roll = Math.random();
 
       if (roll < 0.45) {
-        // 1) Quelques petits pas (micro-déplacement : 2 à 4 pas successifs de 20-45px)
         this.microStepRemaining = 1 + Math.floor(Math.random() * 3);
         this.lastWanderDir = Math.random() < 0.5 ? -1 : 1;
         const stepDist = 18 + Math.random() * 32;
         this.targetX = this.clampX(this.x + this.lastWanderDir * stepDist);
         this.aiPauseTimer = 0.7 + Math.random() * 0.8;
       } else if (roll < 0.75) {
-        // 2) Trot / Marche moyenne (70 à 180 px dans une direction)
         const dir = Math.random() < 0.5 ? -1 : 1;
         this.lastWanderDir = dir;
-        const dist = 70 + Math.random() * 110;
+        const dist = 60 + Math.random() * 110;
         this.targetX = this.clampX(this.x + dir * dist);
         this.aiPauseTimer = 2.0 + Math.random() * 2.5;
       } else if (roll < 0.88) {
-        // 3) Longue traversée (occasionnelle) vers une zone lointaine du bureau
         const target =
           this.x > (minX + maxX) / 2
             ? minX + Math.random() * ((maxX - minX) * 0.4)
@@ -622,7 +778,6 @@ export class PetActor {
         this.targetX = this.clampX(target);
         this.aiPauseTimer = 3.5 + Math.random() * 3.5;
       } else {
-        // 4) Se retourne simplement pour observer sans bouger
         this.flipX = !this.flipX;
         this.targetX = null;
         this.aiPauseTimer = 1.5 + Math.random() * 2.0;
@@ -639,11 +794,11 @@ export class PetActor {
     let min = margin;
     let max = Math.max(margin, window.innerWidth - margin);
 
-    if (this.isPerchingOnWindow && this.activeWindow) {
-      const winMin = Math.max(margin, this.activeWindow.x + 32);
+    if (this.isPerchingOnWindow && this.activeWindow && this.isValidPerchWindow(this.activeWindow)) {
+      const winMin = Math.max(margin, this.activeWindow.x + 28);
       const winMax = Math.min(
         window.innerWidth - margin,
-        this.activeWindow.x + this.activeWindow.width - 32
+        this.activeWindow.x + this.activeWindow.width - 28
       );
       if (winMax > winMin + 20) {
         min = winMin;

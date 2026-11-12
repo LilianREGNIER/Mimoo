@@ -87,6 +87,16 @@ const petAPI: PetIPCContract = {
       ipcRenderer.removeListener('pet:active-window-changed', listener);
     };
   },
+
+  onMusicStateChanged(callback: (isPlaying: boolean) => void): () => void {
+    const listener = (_event: IpcRendererEvent, isPlaying: boolean): void => {
+      callback(isPlaying);
+    };
+    ipcRenderer.on('pet:music-state-changed', listener);
+    return () => {
+      ipcRenderer.removeListener('pet:music-state-changed', listener);
+    };
+  },
 };
 
 contextBridge.exposeInMainWorld('petAPI', petAPI);
