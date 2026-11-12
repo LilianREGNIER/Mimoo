@@ -435,14 +435,22 @@ class DesktopPetRendererApp {
         pet.needs.cleanliness < 60 ||
         pet.poopCount > 0);
 
+    const isPhysicsActive =
+      this.petActor.isAirborne ||
+      this.petActor.isDragging ||
+      this.petActor.getIsPerchingOnWindow() ||
+      Math.abs(this.petActor.getDragStretchX() - 1.0) > 0.015 ||
+      Math.abs(this.petActor.getDragStretchY() - 1.0) > 0.015 ||
+      Math.abs(this.petActor.getDragAngle()) > 0.015;
+
     const isActive =
+      isPhysicsActive ||
       this.isSpongeMode ||
       this.isBallThrowMode ||
       this.ballEntity.active ||
       this.isMusicMode ||
       (this.engine.getPomodoroState()?.isActive ?? false) ||
       this.petActor.isMoving ||
-      this.petActor.isDragging ||
       this.petActor.isHovering ||
       this.miniGames.isPlaying() ||
       this.animator.isInTemporaryAnimation() ||
@@ -452,7 +460,7 @@ class DesktopPetRendererApp {
       isAnyMenuOpen ||
       isSpeechVisible;
 
-    const configuredActive = Math.min(30, Math.max(24, settings.fpsLimitActive || 30));
+    const configuredActive = Math.min(60, Math.max(30, settings.fpsLimitActive || 60));
     const configuredIdle = Math.min(6, Math.max(4, Math.min(5, settings.fpsLimitIdle || 5)));
 
     const targetFps = isActive ? configuredActive : configuredIdle;

@@ -198,6 +198,46 @@ class Program {
         return 0f;
     }
 
+    private static string GetForegroundWindowJson() {
+        try {
+            IntPtr fg = GetForegroundWindow();
+            if (fg != IntPtr.Zero) {
+                StringBuilder sb = new StringBuilder(256);
+                GetWindowText(fg, sb, 256);
+                string rawTitle = sb.ToString().Trim();
+
+                bool isOwnApp = rawTitle.IndexOf("Tamagotchi", StringComparison.OrdinalIgnoreCase) >= 0;
+                bool isSystem = rawTitle == "Program Manager" || rawTitle == "Desktop" || string.IsNullOrEmpty(rawTitle);
+
+                if (!isOwnApp && !isSystem) {
+                    RECT r;
+                    if (GetWindowRect(fg, out r)) {
+                        int rawW = r.Right - r.Left;
+                        int rawH = r.Bottom - r.Top;
+                        if (rawW >= 160 && rawH >= 100 && r.Left > -10000 && r.Top > -10000) {
+                            int x = Math.Max(0, r.Left);
+                            int y = Math.Max(0, r.Top);
+                            int w = Math.Max(160, rawW);
+                            int h = Math.Max(100, rawH);
+
+                            string safeTitle = rawTitle
+                                .Replace("\\", "\\\\")
+                                .Replace("\"", "\\\"")
+                                .Replace("\r", "")
+                                .Replace("\n", "");
+
+                            return string.Format(
+                                "{{\"title\":\"{0}\",\"x\":{1},\"y\":{2},\"width\":{3},\"height\":{4}}}",
+                                safeTitle, x, y, w, h
+                            );
+                        }
+                    }
+                }
+            }
+        } catch {}
+        return lastValidWindowJson;
+    }
+
     static void Main(string[] args) {
         InitCoreAudio();
 
@@ -208,55 +248,30 @@ class Program {
             keyHookId = SetWindowsHookEx(WH_KEYBOARD_LL, keyProc, moduleHandle, 0);
         }
 
+        // 1. Suivi haute fréquence de la géométrie de la fenêtre active (~33 Hz, toutes les 30 ms)
+        // Permet au familier de suivre de façon ultra fluide le déplacement de la fenêtre en temps réel.
+        Timer windowTimer = new Timer((e) => {
+            string wJson = GetForegroundWindowJson();
+            if (wJson != "null" && wJson != lastWindowJson) {
+                lastWindowJson = wJson;
+                lastValidWindowJson = wJson;
+                Console.WriteLine("{\"window\":" + wJson + "}");
+                Console.Out.Flush();
+            }
+        }, null, 30, 30);
+
+        // 2. Échantillonnage d'activité et musique toutes les 500 ms
         Timer reportTimer = new Timer((e) => {
             int c = Interlocked.Exchange(ref clickCount, 0);
             int k = Interlocked.Exchange(ref keyCount, 0);
             heartbeatTick++;
 
-            // 1. Détection de la fenêtre active au premier plan
-            string windowJson = lastValidWindowJson;
-            try {
-                IntPtr fg = GetForegroundWindow();
-                if (fg != IntPtr.Zero) {
-                    StringBuilder sb = new StringBuilder(256);
-                    GetWindowText(fg, sb, 256);
-                    string rawTitle = sb.ToString().Trim();
-
-                    // Ignorer notre propre overlay et les composants système sans intérêt
-                    bool isOwnApp = rawTitle.IndexOf("Tamagotchi", StringComparison.OrdinalIgnoreCase) >= 0;
-                    bool isSystem = rawTitle == "Program Manager" || rawTitle == "Desktop" || string.IsNullOrEmpty(rawTitle);
-
-                    if (!isOwnApp && !isSystem) {
-                        RECT r;
-                        if (GetWindowRect(fg, out r)) {
-                            int rawW = r.Right - r.Left;
-                            int rawH = r.Bottom - r.Top;
-                            if (rawW >= 160 && rawH >= 100 && r.Left > -10000 && r.Top > -10000) {
-                                int x = Math.Max(0, r.Left);
-                                int y = Math.Max(0, r.Top);
-                                int w = Math.Max(160, rawW);
-                                int h = Math.Max(100, rawH);
-
-                                string safeTitle = rawTitle
-                                    .Replace("\\", "\\\\")
-                                    .Replace("\"", "\\\"")
-                                    .Replace("\r", "")
-                                    .Replace("\n", "");
-
-                                windowJson = string.Format(
-                                    "{{\"title\":\"{0}\",\"x\":{1},\"y\":{2},\"width\":{3},\"height\":{4}}}",
-                                    safeTitle, x, y, w, h
-                                );
-                                lastValidWindowJson = windowJson;
-                            }
-                        }
-                    }
-                }
-            } catch {
-                windowJson = lastValidWindowJson;
+            string windowJson = GetForegroundWindowJson();
+            if (windowJson != "null") {
+                lastValidWindowJson = windowJson;
             }
 
-            // 2. Détection de musique (Fenêtres + Audio Peak Meter Windows Core Audio)
+            // Détection de musique (Fenêtres + Audio Peak Meter Windows Core Audio)
             hasMusicKeywords = false;
             isSpotifyPlayingTrack = false;
             try {
@@ -270,7 +285,6 @@ class Program {
             if (isSpotifyPlayingTrack) {
                 isMusicNow = true;
             } else if (hasMusicKeywords && isSoundActive) {
-                // Application de musique ouverte ET son actif sortant des haut-parleurs/écouteurs !
                 isMusicNow = true;
             } else if (hasMusicKeywords && peak > 0.002f) {
                 isMusicNow = true;
@@ -291,18 +305,16 @@ class Program {
             }
 
             bool hasActivity = (c > 0 || k > 0);
-            bool windowChanged = (windowJson != lastWindowJson);
             bool musicChanged = (effectiveMusicState != lastMusicState);
-            bool heartbeat = (heartbeatTick >= 4); // Toutes les 2 secondes au moins
+            bool heartbeat = (heartbeatTick >= 4); // Heartbeat toutes les 2s
 
-            if (hasActivity || windowChanged || musicChanged || heartbeat) {
+            if (hasActivity || musicChanged || heartbeat) {
                 heartbeatTick = 0;
-                lastWindowJson = windowJson;
                 lastMusicState = effectiveMusicState;
 
                 Console.WriteLine(string.Format(
-                    "{{\"clicks\":{0},\"keys\":{1},\"window\":{2},\"music\":{3}}}",
-                    c, k, windowJson, effectiveMusicState ? "true" : "false"
+                    "{{\"clicks\":{0},\"keys\":{1},\"music\":{2}}}",
+                    c, k, effectiveMusicState ? "true" : "false"
                 ));
                 Console.Out.Flush();
             }
@@ -312,6 +324,7 @@ class Program {
         while (GetMessage(out msg, IntPtr.Zero, 0, 0) > 0) {
         }
 
+        windowTimer.Dispose();
         reportTimer.Dispose();
         UnhookWindowsHookEx(mouseHookId);
         UnhookWindowsHookEx(keyHookId);

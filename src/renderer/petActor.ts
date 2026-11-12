@@ -70,6 +70,7 @@ export class PetActor {
   private isPerchingOnWindow = false;
   private isJumpingToWindow = false;
   private targetPerchY = 0;
+  private perchOffsetX = 80;
   private perchDecisionTimer = 4.0;
   private perchDurationTimer = 0;
 
@@ -163,6 +164,11 @@ export class PetActor {
   public setActiveWindow(info: ActiveWindowInfo | null): void {
     if (info && this.isValidPerchWindow(info)) {
       this.activeWindow = info;
+      if (this.isPerchingOnWindow && !this.isDragging && !this.isAirborne) {
+        // Suit instantanément le déplacement de la fenêtre en temps réel
+        this.x = this.clampX(info.x + this.perchOffsetX);
+        this.y = this.getPerchY(info);
+      }
     } else if (!info) {
       // Ne réinitialise pas brutalement pour laisser le temps au familier de terminer son action
       if (this.isPerchingOnWindow) {
@@ -210,6 +216,7 @@ export class PetActor {
     const maxX = Math.min(window.innerWidth - 30, win.x + win.width - 35);
     const targetWinX = minX < maxX ? minX + Math.random() * (maxX - minX) : win.x + win.width / 2;
     this.targetX = this.clampX(targetWinX);
+    this.perchOffsetX = Math.max(35, Math.min(win.width - 35, this.targetX - win.x));
     this.callbacks.onWindowPerchJump?.(win.title);
   }
 
@@ -700,6 +707,7 @@ export class PetActor {
           this.isAirborne = false;
           this.isPerchingOnWindow = true;
           this.targetPerchY = perchY;
+          this.perchOffsetX = Math.max(35, Math.min(this.activeWindow.width - 35, this.x - this.activeWindow.x));
           this.perchDurationTimer = 16 + Math.random() * 12;
           this.dragStretchY = 0.74;
           this.dragStretchX = 1.26;
@@ -765,9 +773,10 @@ export class PetActor {
       if (!this.activeWindow || !this.isValidPerchWindow(this.activeWindow)) {
         this.hopDownFromWindow();
       } else {
-        // Suit la fenêtre si elle est déplacée sur le bureau
+        // Suit fidèlement la fenêtre (X et Y) lors de son déplacement en direct
         this.targetPerchY = this.getPerchY(this.activeWindow);
         this.y = this.targetPerchY;
+        this.x = this.clampX(this.activeWindow.x + this.perchOffsetX);
 
         this.perchDurationTimer -= safeDt;
         if (this.perchDurationTimer <= 0) {
@@ -875,6 +884,9 @@ export class PetActor {
         this.x = this.targetX;
         this.targetX = null;
         this.isMoving = false;
+        if (this.isPerchingOnWindow && this.activeWindow) {
+          this.perchOffsetX = this.x - this.activeWindow.x;
+        }
         if (this.microStepRemaining > 0) {
           this.aiPauseTimer = 0.5 + Math.random() * 0.8;
         } else {
@@ -887,6 +899,9 @@ export class PetActor {
         this.isMoving = true;
         const step = Math.min(absDiff, this.walkSpeed * safeDt);
         this.x = this.clampX(this.x + dir * step);
+        if (this.isPerchingOnWindow && this.activeWindow) {
+          this.perchOffsetX = this.x - this.activeWindow.x;
+        }
       }
       return;
     }
