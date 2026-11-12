@@ -114,6 +114,8 @@ export class PcActivityTracker {
         const lines = buffer.split('\n');
         buffer = lines.pop() ?? '';
 
+        let latestWindowInChunk: ActiveWindowInfo | null | undefined = undefined;
+
         for (const line of lines) {
           const trimmed = line.trim();
           if (!trimmed.startsWith('{')) {
@@ -143,29 +145,34 @@ export class PcActivityTracker {
               }
             }
             if ('window' in parsed) {
-              const newWin = parsed.window ?? null;
-              const prev = this.currentActiveWindow;
-              const hasChanged =
-                (prev === null && newWin !== null) ||
-                (prev !== null && newWin === null) ||
-                (prev !== null &&
-                  newWin !== null &&
-                  (prev.title !== newWin.title ||
-                    prev.x !== newWin.x ||
-                    prev.y !== newWin.y ||
-                    prev.width !== newWin.width ||
-                    prev.height !== newWin.height));
-
-              if (hasChanged) {
-                this.currentActiveWindow = newWin;
-                const win = this.getWindow();
-                if (win && !win.isDestroyed() && !win.webContents.isDestroyed()) {
-                  win.webContents.send('pet:active-window-changed', newWin);
-                }
-              }
+              latestWindowInChunk = parsed.window ?? null;
             }
           } catch {
             // Ignorer les lignes tronquées ou malformées
+          }
+        }
+
+        // Émission immédiate de la position la plus fraîche de la fenêtre active sans engorgement IPC
+        if (latestWindowInChunk !== undefined) {
+          const newWin = latestWindowInChunk;
+          const prev = this.currentActiveWindow;
+          const hasChanged =
+            (prev === null && newWin !== null) ||
+            (prev !== null && newWin === null) ||
+            (prev !== null &&
+              newWin !== null &&
+              (prev.title !== newWin.title ||
+                prev.x !== newWin.x ||
+                prev.y !== newWin.y ||
+                prev.width !== newWin.width ||
+                prev.height !== newWin.height));
+
+          if (hasChanged) {
+            this.currentActiveWindow = newWin;
+            const win = this.getWindow();
+            if (win && !win.isDestroyed() && !win.webContents.isDestroyed()) {
+              win.webContents.send('pet:active-window-changed', newWin);
+            }
           }
         }
       });

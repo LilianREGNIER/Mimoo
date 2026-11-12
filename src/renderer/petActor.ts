@@ -133,7 +133,7 @@ export class PetActor {
    * Calcule la hauteur d'atterrissage sur la bordure supérieure de la fenêtre active.
    */
   public getPerchY(win: ActiveWindowInfo): number {
-    return Math.max(30, Math.min(this.getGroundY() - 50, win.y));
+    return Math.max(0, Math.min(this.getGroundY() - 40, win.y));
   }
 
   /**
@@ -165,8 +165,12 @@ export class PetActor {
     if (info && this.isValidPerchWindow(info)) {
       this.activeWindow = info;
       if (this.isPerchingOnWindow && !this.isDragging && !this.isAirborne) {
-        // Suit instantanément le déplacement de la fenêtre en temps réel
-        this.x = this.clampX(info.x + this.perchOffsetX);
+        // Suit instantanément le déplacement de la fenêtre en temps réel au pixel près
+        // sans dériver ni subir de clamping artificiel contre les bords de l'écran
+        if (this.perchOffsetX > info.width - 35) {
+          this.perchOffsetX = Math.max(35, info.width - 35);
+        }
+        this.x = Math.round(info.x + this.perchOffsetX);
         this.y = this.getPerchY(info);
       }
     } else if (!info) {
@@ -808,7 +812,7 @@ export class PetActor {
       if (this.vy >= 0 && this.y >= this.targetPerchY) {
         this.y = this.targetPerchY;
         if (this.activeWindow && this.isValidPerchWindow(this.activeWindow)) {
-          this.x = this.clampX(this.activeWindow.x + this.perchOffsetX);
+          this.x = Math.round(this.activeWindow.x + this.perchOffsetX);
         } else if (this.targetX !== null) {
           this.x = this.targetX;
         }
@@ -833,13 +837,16 @@ export class PetActor {
         // Suit fidèlement la fenêtre (X et Y) lors de son déplacement en direct
         this.targetPerchY = this.getPerchY(this.activeWindow);
         this.y = this.targetPerchY;
-        this.x = this.clampX(this.activeWindow.x + this.perchOffsetX);
+        this.x = Math.round(this.activeWindow.x + this.perchOffsetX);
 
         this.perchDurationTimer -= safeDt;
         if (this.perchDurationTimer <= 0) {
           this.hopDownFromWindow();
         }
       }
+      this.isMoving = false;
+      this.targetX = null;
+      return;
     } else {
       // 3) Redescente douce vers le sol du bureau
       if (this.y < floorY - 1) {
@@ -941,9 +948,6 @@ export class PetActor {
         this.x = this.targetX;
         this.targetX = null;
         this.isMoving = false;
-        if (this.isPerchingOnWindow && this.activeWindow) {
-          this.perchOffsetX = this.x - this.activeWindow.x;
-        }
         if (this.microStepRemaining > 0) {
           this.aiPauseTimer = 0.5 + Math.random() * 0.8;
         } else {
@@ -956,9 +960,6 @@ export class PetActor {
         this.isMoving = true;
         const step = Math.min(absDiff, this.walkSpeed * safeDt);
         this.x = this.clampX(this.x + dir * step);
-        if (this.isPerchingOnWindow && this.activeWindow) {
-          this.perchOffsetX = this.x - this.activeWindow.x;
-        }
       }
       return;
     }
@@ -1025,21 +1026,8 @@ export class PetActor {
 
   private clampX(val: number): number {
     const margin = this.getHorizontalMargin();
-    let min = margin;
-    let max = Math.max(margin, window.innerWidth - margin);
-
-    if (this.isPerchingOnWindow && this.activeWindow && this.isValidPerchWindow(this.activeWindow)) {
-      const winMin = Math.max(margin, this.activeWindow.x + 28);
-      const winMax = Math.min(
-        window.innerWidth - margin,
-        this.activeWindow.x + this.activeWindow.width - 28
-      );
-      if (winMax > winMin + 20) {
-        min = winMin;
-        max = winMax;
-      }
-    }
-
+    const min = margin;
+    const max = Math.max(margin, window.innerWidth - margin);
     return Math.min(max, Math.max(min, Math.round(val)));
   }
 

@@ -30,7 +30,9 @@ interface IAudioMeterInformation {
 class Program {
     private const int WH_MOUSE_LL = 14;
     private const int WH_KEYBOARD_LL = 13;
+    private const int WM_MOUSEMOVE = 0x0200;
     private const int WM_LBUTTONDOWN = 0x0201;
+    private const int WM_LBUTTONUP = 0x0202;
     private const int WM_RBUTTONDOWN = 0x0204;
     private const int WM_MBUTTONDOWN = 0x0207;
     private const int WM_KEYDOWN = 0x0100;
@@ -38,6 +40,9 @@ class Program {
 
     private static int clickCount = 0;
     private static int keyCount = 0;
+    private static bool isLeftMouseDown = false;
+    private static long lastEmitTimestamp = 0;
+    private static readonly Stopwatch emitStopwatch = Stopwatch.StartNew();
     private static string lastWindowJson = "null";
     private static string lastValidWindowJson = "null";
     private static bool lastMusicState = false;
@@ -52,11 +57,37 @@ class Program {
 
     private static IAudioMeterInformation audioMeter = null;
 
+    private static void EmitWindowIfChanged(bool force = false) {
+        long now = emitStopwatch.ElapsedMilliseconds;
+        if (!force && (now - lastEmitTimestamp < 8)) {
+            return;
+        }
+        string wJson = GetForegroundWindowJson();
+        if (wJson != "null" && wJson != lastWindowJson) {
+            lastWindowJson = wJson;
+            lastValidWindowJson = wJson;
+            lastEmitTimestamp = now;
+            Console.WriteLine("{\"window\":" + wJson + "}");
+            Console.Out.Flush();
+        }
+    }
+
     private static IntPtr MouseHookCallback(int nCode, IntPtr wParam, IntPtr lParam) {
         if (nCode >= 0) {
             int msg = wParam.ToInt32();
-            if (msg == WM_LBUTTONDOWN || msg == WM_RBUTTONDOWN || msg == WM_MBUTTONDOWN) {
+            if (msg == WM_LBUTTONDOWN) {
+                isLeftMouseDown = true;
                 Interlocked.Increment(ref clickCount);
+                EmitWindowIfChanged(true);
+            } else if (msg == WM_LBUTTONUP) {
+                isLeftMouseDown = false;
+                EmitWindowIfChanged(true);
+            } else if (msg == WM_RBUTTONDOWN || msg == WM_MBUTTONDOWN) {
+                Interlocked.Increment(ref clickCount);
+            } else if (msg == WM_MOUSEMOVE && isLeftMouseDown) {
+                // Dès que la souris bouge avec le bouton gauche appuyé (glissement de fenêtre en direct),
+                // on émet la nouvelle géométrie instantanément sans aucun délai de timer !
+                EmitWindowIfChanged(false);
             }
         }
         return CallNextHookEx(mouseHookId, nCode, wParam, lParam);
@@ -93,6 +124,10 @@ class Program {
 
     [DllImport("user32.dll", SetLastError = true)]
     private static extern bool GetWindowRect(IntPtr hWnd, out RECT lpRect);
+
+    [DllImport("dwmapi.dll")]
+    private static extern int DwmGetWindowAttribute(IntPtr hwnd, int dwAttribute, out RECT pvAttribute, int cbAttribute);
+    private const int DWMWA_EXTENDED_FRAME_BOUNDS = 9;
 
     [DllImport("user32.dll", CharSet = CharSet.Auto, SetLastError = true)]
     private static extern int GetWindowText(IntPtr hWnd, StringBuilder lpString, int nMaxCount);
@@ -210,27 +245,37 @@ class Program {
                 bool isSystem = rawTitle == "Program Manager" || rawTitle == "Desktop" || string.IsNullOrEmpty(rawTitle);
 
                 if (!isOwnApp && !isSystem) {
-                    RECT r;
-                    if (GetWindowRect(fg, out r)) {
-                        int rawW = r.Right - r.Left;
-                        int rawH = r.Bottom - r.Top;
-                        if (rawW >= 160 && rawH >= 100 && r.Left > -10000 && r.Top > -10000) {
-                            int x = Math.Max(0, r.Left);
-                            int y = Math.Max(0, r.Top);
-                            int w = Math.Max(160, rawW);
-                            int h = Math.Max(100, rawH);
+                    RECT r = new RECT();
+                    int hr = -1;
+                    try {
+                        hr = DwmGetWindowAttribute(fg, DWMWA_EXTENDED_FRAME_BOUNDS, out r, Marshal.SizeOf(typeof(RECT)));
+                    } catch {
+                        hr = -1;
+                    }
+                    if (hr != 0) {
+                        if (!GetWindowRect(fg, out r)) return lastValidWindowJson;
+                    }
 
-                            string safeTitle = rawTitle
-                                .Replace("\\", "\\\\")
-                                .Replace("\"", "\\\"")
-                                .Replace("\r", "")
-                                .Replace("\n", "");
+                    int rawW = r.Right - r.Left;
+                    int rawH = r.Bottom - r.Top;
+                    if (rawW >= 160 && rawH >= 100 && r.Left > -10000 && r.Top > -10000) {
+                        // Utilisation directe des coordonnées réelles sans clamping à 0, pour supporter
+                        // les bordures d'écran, le snapping Windows et le multi-écran sans distorsion.
+                        int x = r.Left;
+                        int y = r.Top;
+                        int w = Math.Max(160, rawW);
+                        int h = Math.Max(100, rawH);
 
-                            return string.Format(
-                                "{{\"title\":\"{0}\",\"x\":{1},\"y\":{2},\"width\":{3},\"height\":{4}}}",
-                                safeTitle, x, y, w, h
-                            );
-                        }
+                        string safeTitle = rawTitle
+                            .Replace("\\", "\\\\")
+                            .Replace("\"", "\\\"")
+                            .Replace("\r", "")
+                            .Replace("\n", "");
+
+                        return string.Format(
+                            "{{\"title\":\"{0}\",\"x\":{1},\"y\":{2},\"width\":{3},\"height\":{4}}}",
+                            safeTitle, x, y, w, h
+                        );
                     }
                 }
             }
@@ -248,17 +293,11 @@ class Program {
             keyHookId = SetWindowsHookEx(WH_KEYBOARD_LL, keyProc, moduleHandle, 0);
         }
 
-        // 1. Suivi haute fréquence de la géométrie de la fenêtre active (~66 Hz, toutes les 15 ms)
-        // Permet au familier de suivre de façon ultra fluide le déplacement de la fenêtre en temps réel sans latence.
+        // 1. Suivi haute fréquence (~100 Hz, 10 ms) pour les déplacements clavier (Win+Flèches), restaurations, et animations
+        // Les glissements à la souris sont eux traités instantanément dans le hook de souris sans délai.
         Timer windowTimer = new Timer((e) => {
-            string wJson = GetForegroundWindowJson();
-            if (wJson != "null" && wJson != lastWindowJson) {
-                lastWindowJson = wJson;
-                lastValidWindowJson = wJson;
-                Console.WriteLine("{\"window\":" + wJson + "}");
-                Console.Out.Flush();
-            }
-        }, null, 15, 15);
+            EmitWindowIfChanged(false);
+        }, null, 10, 10);
 
         // 2. Échantillonnage d'activité et musique toutes les 500 ms
         Timer reportTimer = new Timer((e) => {
