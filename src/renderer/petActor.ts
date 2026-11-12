@@ -71,8 +71,9 @@ export class PetActor {
   private isJumpingToWindow = false;
   private targetPerchY = 0;
   private perchOffsetX = 80;
-  private perchDecisionTimer = 4.0;
+  private perchDecisionTimer = 35.0;
   private perchDurationTimer = 0;
+  private windowJumpEnabled = true;
 
   // Jeu de la balle (Fetch)
   private isFetchingBall = false;
@@ -185,6 +186,29 @@ export class PetActor {
     return this.isPerchingOnWindow;
   }
 
+  public getActiveWindow(): ActiveWindowInfo | null {
+    return this.activeWindow;
+  }
+
+  public shiftPerchWindow(dx: number, dy: number): void {
+    if (!this.isPerchingOnWindow || !this.activeWindow) return;
+    this.activeWindow.x += dx;
+    this.activeWindow.y += dy;
+    this.x += dx;
+    this.y += dy;
+  }
+
+  public setWindowJumpEnabled(enabled: boolean): void {
+    this.windowJumpEnabled = enabled;
+    if (!enabled && (this.isPerchingOnWindow || this.isJumpingToWindow)) {
+      this.hopDownFromWindow();
+    }
+  }
+
+  public getWindowJumpEnabled(): boolean {
+    return this.windowJumpEnabled;
+  }
+
   public getIsJumpingToWindow(): boolean {
     return this.isJumpingToWindow;
   }
@@ -256,7 +280,7 @@ export class PetActor {
   public hopDownFromWindow(): void {
     this.isPerchingOnWindow = false;
     this.isJumpingToWindow = false;
-    this.perchDecisionTimer = 6 + Math.random() * 8;
+    this.perchDecisionTimer = 45 + Math.random() * 45; // Cooldown généreux de 45 à 90s avant de pouvoir remonter
     this.vy = 40;
   }
 
@@ -662,6 +686,7 @@ export class PetActor {
         this.vx = 0;
         this.vy = 0;
         this.isAirborne = false;
+        this.perchDecisionTimer = 50 + Math.random() * 30; // Long cooldown après avoir été posé au sol
         this.dragStretchY = 0.76;
         this.dragStretchX = 1.24;
         this.callbacks.onPositionChanged(this.x, this.y);
@@ -772,6 +797,7 @@ export class PetActor {
           this.vy = 0;
           this.vx = 0;
           this.isAirborne = false;
+          this.perchDecisionTimer = 45 + Math.random() * 30; // Long cooldown après atterrissage au sol
           this.dragStretchY = 0.76;
           this.dragStretchX = 1.24;
           this.callbacks.onPositionChanged(this.x, this.y);
@@ -920,8 +946,9 @@ export class PetActor {
       return;
     }
 
-    // 6) Décision autonome de grimper sur la fenêtre active
+    // 6) Décision autonome de grimper sur la fenêtre active (rare et naturelle)
     if (
+      this.windowJumpEnabled &&
       this.activeWindow &&
       !this.isDragging &&
       !this.isPerchingOnWindow &&
@@ -930,8 +957,10 @@ export class PetActor {
       if (this.isValidPerchWindow(this.activeWindow)) {
         this.perchDecisionTimer -= safeDt;
         if (this.perchDecisionTimer <= 0) {
-          this.perchDecisionTimer = 4.0 + Math.random() * 5.0;
-          if (Math.random() < 0.85) {
+          // Prochaine tentative dans 35 à 70 secondes
+          this.perchDecisionTimer = 35 + Math.random() * 35;
+          // Seulement 35 % de chance de monter (événement occasionnel, pas systématique)
+          if (Math.random() < 0.35) {
             this.jumpToWindow(this.activeWindow);
             return;
           }

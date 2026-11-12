@@ -287,6 +287,7 @@ class DesktopPetRendererApp {
 
     this.petActor.setScales(initialSpecies?.scale ?? 1, settings.petScale ?? 1);
     this.petActor.setWalkSpeed(initialSpecies?.walkSpeed ?? 0);
+    this.petActor.setWindowJumpEnabled(settings.windowJumpEnabled ?? true);
 
     // 3.5 Initialisation du gestionnaire Mode Online & Amis
     this.onlineManager = new OnlineManager({
@@ -773,14 +774,73 @@ class DesktopPetRendererApp {
   }
 
   private bindPointerAndDomEvents(): void {
+    let isTrackingWindowDrag = false;
+    let dragLastMouseX = 0;
+    let dragLastMouseY = 0;
+
     // Événements globaux de souris sur la fenêtre pour le HitTester et le familier
     window.addEventListener('mousemove', (e) => {
       this.hitTester.evaluateAt(e.clientX, e.clientY);
       this.petActor.handlePointerMove(e.clientX, e.clientY);
+
+      // Suivi direct à 0 ms de latence lorsque l'utilisateur déplace la fenêtre active à la souris
+      if (this.petActor.getIsPerchingOnWindow()) {
+        const win = this.petActor.getActiveWindow();
+        if (win && e.buttons === 1) {
+          if (!isTrackingWindowDrag) {
+            const inTitleBar =
+              e.clientX >= win.x - 20 &&
+              e.clientX <= win.x + win.width + 20 &&
+              e.clientY >= win.y - 40 &&
+              e.clientY <= win.y + 60;
+            if (inTitleBar) {
+              isTrackingWindowDrag = true;
+              dragLastMouseX = e.clientX;
+              dragLastMouseY = e.clientY;
+            }
+          }
+
+          if (isTrackingWindowDrag) {
+            const dx = e.clientX - dragLastMouseX;
+            const dy = e.clientY - dragLastMouseY;
+            dragLastMouseX = e.clientX;
+            dragLastMouseY = e.clientY;
+
+            if (dx !== 0 || dy !== 0) {
+              this.petActor.shiftPerchWindow(dx, dy);
+              this.renderFrame();
+              this.updateFloatingPanelsPosition();
+            }
+          }
+        } else {
+          isTrackingWindowDrag = false;
+        }
+      } else {
+        isTrackingWindowDrag = false;
+      }
     });
 
-    window.addEventListener('mousedown', () => {
+    window.addEventListener('mousedown', (e) => {
       this.recordLocalOverlayInput(1, 0);
+      if (this.petActor.getIsPerchingOnWindow()) {
+        const win = this.petActor.getActiveWindow();
+        if (win) {
+          const inTitleBar =
+            e.clientX >= win.x - 20 &&
+            e.clientX <= win.x + win.width + 20 &&
+            e.clientY >= win.y - 40 &&
+            e.clientY <= win.y + 60;
+          if (inTitleBar) {
+            isTrackingWindowDrag = true;
+            dragLastMouseX = e.clientX;
+            dragLastMouseY = e.clientY;
+          }
+        }
+      }
+    });
+
+    window.addEventListener('mouseup', () => {
+      isTrackingWindowDrag = false;
     });
 
     this.canvas.addEventListener('mousedown', (e) => {
@@ -1124,6 +1184,16 @@ class DesktopPetRendererApp {
     const notifInput = document.getElementById('toggle-notifications') as HTMLInputElement | null;
     notifInput?.addEventListener('change', () => {
       this.updateUserSetting({ notificationsEnabled: notifInput.checked });
+    });
+
+    const windowJumpInput = document.getElementById('toggle-window-jump') as HTMLInputElement | null;
+    windowJumpInput?.addEventListener('change', () => {
+      const enabled = windowJumpInput.checked;
+      this.updateUserSetting({ windowJumpEnabled: enabled });
+      this.petActor.setWindowJumpEnabled(enabled);
+      if (!enabled) {
+        this.showSpeechBubble("D'accord, je reste sur le bureau ! 🐾", 3000);
+      }
     });
 
     const scaleButtons = document.querySelectorAll<HTMLButtonElement>('#scale-selector .seg-btn');
@@ -2882,6 +2952,11 @@ class DesktopPetRendererApp {
       notifEl.checked = settings.notificationsEnabled;
     }
 
+    const windowJumpEl = document.getElementById('toggle-window-jump') as HTMLInputElement | null;
+    if (windowJumpEl) {
+      windowJumpEl.checked = settings.windowJumpEnabled ?? true;
+    }
+
     const nameInputEl = document.getElementById('input-pet-name') as HTMLInputElement | null;
     if (nameInputEl) {
       nameInputEl.value = save.pet.name;
@@ -2895,6 +2970,9 @@ class DesktopPetRendererApp {
   }
 
   private updateUserSetting(partial: Partial<BootstrapPayload['saveData']['settings']>): void {
+    if (partial.windowJumpEnabled !== undefined) {
+      this.petActor.setWindowJumpEnabled(partial.windowJumpEnabled);
+    }
     this.engine.updateSettings(partial);
     void window.petAPI?.updateSettings(partial);
     void this.persistSaveState();

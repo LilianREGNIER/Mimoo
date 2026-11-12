@@ -120,6 +120,7 @@ export function createDefaultSettings(): UserSettings {
     fpsLimitActive: 60,
     preferredDisplayId: null,
     petScale: 1,
+    windowJumpEnabled: true,
   };
 }
 
@@ -605,6 +606,10 @@ export function validateAndMigrateSaveData(
       rawSettings.petScale <= 3
         ? rawSettings.petScale
         : defaultSettings.petScale,
+    windowJumpEnabled:
+      typeof rawSettings.windowJumpEnabled === 'boolean'
+        ? rawSettings.windowJumpEnabled
+        : defaultSettings.windowJumpEnabled,
   };
 
   const savedAt = sanitizeNonNegativeNumber(raw.savedAt, safeNow, warnings, 'savedAt');

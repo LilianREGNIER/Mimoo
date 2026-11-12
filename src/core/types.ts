@@ -274,6 +274,8 @@ export interface UserSettings {
   preferredDisplayId: number | null;
   /** Multiplicateur d'échelle d'affichage du familier choisi par l'utilisateur. */
   petScale: number;
+  /** Permet au familier de sauter occasionnellement sur les fenêtres actives. */
+  windowJumpEnabled: boolean;
 }
 
 /** État dynamique complet du familier persisté dans la sauvegarde. */
