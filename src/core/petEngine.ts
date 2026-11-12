@@ -41,6 +41,9 @@ import type {
   OfflineCatchupReport,
   PcActivityBatch,
   PetState,
+  PomodoroMode,
+  PomodoroState,
+  PomodoroTickResult,
   SaveDataV1,
   SpeciesFormDefinition,
   StarterFormId,
@@ -503,6 +506,169 @@ export class PetEngine {
       evolved: evoResult.evolved,
       newForm: evoResult.newForm,
     };
+  }
+
+  /**
+   * Retourne l'état courant du minuteur Pomodoro (ou initialise s'il est absent).
+   */
+  public getPomodoroState(): PomodoroState {
+    if (!this.saveData.pet.pomodoro) {
+      this.saveData.pet.pomodoro = {
+        isActive: false,
+        mode: 'idle',
+        workDurationMinutes: 25,
+        breakDurationMinutes: 5,
+        remainingSeconds: 25 * 60,
+        totalWorkSessionsCompleted: 0,
+      };
+    }
+    return { ...this.saveData.pet.pomodoro };
+  }
+
+  /**
+   * Démarre une session Pomodoro de travail (Focus).
+   */
+  public startPomodoro(workMinutes: number = 25, breakMinutes: number = 5): PomodoroState {
+    const safeWork = Math.max(0.5, Math.min(120, workMinutes));
+    const safeBreak = Math.max(0.5, Math.min(60, breakMinutes));
+    this.saveData.pet.pomodoro = {
+      isActive: true,
+      mode: 'work',
+      workDurationMinutes: safeWork,
+      breakDurationMinutes: safeBreak,
+      remainingSeconds: Math.round(safeWork * 60),
+      totalWorkSessionsCompleted: this.saveData.pet.pomodoro?.totalWorkSessionsCompleted ?? 0,
+    };
+    return this.getPomodoroState();
+  }
+
+  /**
+   * Met en pause la session Pomodoro en cours.
+   */
+  public pausePomodoro(): PomodoroState {
+    const pom = this.getPomodoroState();
+    if (pom.isActive && pom.mode !== 'paused' && pom.mode !== 'idle') {
+      this.saveData.pet.pomodoro = {
+        ...pom,
+        mode: 'paused',
+      };
+    }
+    return this.getPomodoroState();
+  }
+
+  /**
+   * Reprend la session Pomodoro mise en pause.
+   */
+  public resumePomodoro(): PomodoroState {
+    const pom = this.getPomodoroState();
+    if (pom.isActive && pom.mode === 'paused') {
+      this.saveData.pet.pomodoro = {
+        ...pom,
+        mode: 'work',
+      };
+    }
+    return this.getPomodoroState();
+  }
+
+  /**
+   * Arrête et réinitialise le minuteur Pomodoro.
+   */
+  public stopPomodoro(): PomodoroState {
+    const pom = this.getPomodoroState();
+    this.saveData.pet.pomodoro = {
+      ...pom,
+      isActive: false,
+      mode: 'idle',
+      remainingSeconds: Math.round(pom.workDurationMinutes * 60),
+    };
+    return this.getPomodoroState();
+  }
+
+  /**
+   * Fait avancer le minuteur Pomodoro de `deltaSeconds` et attribue les récompenses en cas de complétion.
+   */
+  public tickPomodoro(deltaSeconds: number): PomodoroTickResult {
+    const pom = this.getPomodoroState();
+    if (!pom.isActive || pom.mode === 'paused' || pom.mode === 'idle') {
+      return { state: pom };
+    }
+
+    const nextRemaining = pom.remainingSeconds - deltaSeconds;
+    if (nextRemaining > 0) {
+      this.saveData.pet.pomodoro = {
+        ...pom,
+        remainingSeconds: nextRemaining,
+      };
+      return { state: this.getPomodoroState() };
+    }
+
+    // Le chrono de la phase actuelle est arrivé à 0 !
+    if (pom.mode === 'work') {
+      // Fin de la session de travail !
+      const completedSessions = pom.totalWorkSessionsCompleted + 1;
+      const reward = {
+        coins: 50,
+        happiness: 25,
+        energy: 20,
+      };
+
+      // Appliquer les récompenses au familier
+      this.saveData.pet.tamaCoins = (this.saveData.pet.tamaCoins ?? 0) + reward.coins;
+      this.saveData.pet.needs.happiness = Math.min(100, this.saveData.pet.needs.happiness + reward.happiness);
+      this.saveData.pet.needs.energy = Math.min(100, this.saveData.pet.needs.energy + reward.energy);
+
+      // Passer en mode Pause
+      this.saveData.pet.pomodoro = {
+        ...pom,
+        mode: 'break',
+        remainingSeconds: Math.round(pom.breakDurationMinutes * 60),
+        totalWorkSessionsCompleted: completedSessions,
+      };
+
+      return {
+        state: this.getPomodoroState(),
+        phaseCompleted: 'work',
+        reward,
+      };
+    } else {
+      // Fin de la pause
+      this.saveData.pet.pomodoro = {
+        ...pom,
+        isActive: false,
+        mode: 'idle',
+        remainingSeconds: Math.round(pom.workDurationMinutes * 60),
+      };
+
+      return {
+        state: this.getPomodoroState(),
+        phaseCompleted: 'break',
+      };
+    }
+  }
+
+  /**
+   * Ajoute des pièces TamaCoins au familier et renvoie le nouveau solde.
+   */
+  public addCoins(amount: number): number {
+    const safeAmount = Math.max(0, Math.round(amount));
+    this.saveData.pet.tamaCoins = (this.saveData.pet.tamaCoins ?? 0) + safeAmount;
+    return this.saveData.pet.tamaCoins;
+  }
+
+  /**
+   * Augmente le bonheur du familier et renvoie la nouvelle valeur bornée [0, 100].
+   */
+  public boostHappiness(amount: number): number {
+    const safeAmount = Math.max(0, amount);
+    this.saveData.pet.needs.happiness = Math.min(
+      100,
+      Math.max(0, this.saveData.pet.needs.happiness + safeAmount)
+    );
+    if (this.saveData.pet.needs.happiness >= 65) {
+      this.saveData.pet.needsCuddle = false;
+      this.saveData.pet.needsPlay = false;
+    }
+    return this.saveData.pet.needs.happiness;
   }
 
   /**

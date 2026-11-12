@@ -12,6 +12,7 @@ import type {
   LineageId,
   NeedsState,
   PetState,
+  PomodoroState,
   SaveDataV1,
   StageId,
   UserSettings,
@@ -186,6 +187,14 @@ export function createInitialPetState(name?: string, nowMs?: number): PetState {
       hat: null,
       accessory: null,
       aura: null,
+    },
+    pomodoro: {
+      isActive: false,
+      mode: 'idle',
+      workDurationMinutes: 25,
+      breakDurationMinutes: 5,
+      remainingSeconds: 25 * 60,
+      totalWorkSessionsCompleted: 0,
     },
   };
 }
@@ -558,6 +567,8 @@ export function validateAndMigrateSaveData(
         : null,
   };
 
+  const pomodoro = sanitizePomodoroState(rawPet.pomodoro);
+
   const defaultSettings = createDefaultSettings();
   const rawSettings = isPlainObject(raw.settings) ? raw.settings : {};
 
@@ -622,6 +633,7 @@ export function validateAndMigrateSaveData(
       tamaCoins,
       ownedCosmetics,
       equippedCosmetics,
+      pomodoro,
     },
     settings,
   };
@@ -631,6 +643,49 @@ export function validateAndMigrateSaveData(
     migrated,
     recoveredFromCorruption: false,
     warnings,
+  };
+}
+
+function sanitizePomodoroState(rawPom: unknown): PomodoroState {
+  if (!isPlainObject(rawPom)) {
+    return {
+      isActive: false,
+      mode: 'idle',
+      workDurationMinutes: 25,
+      breakDurationMinutes: 5,
+      remainingSeconds: 25 * 60,
+      totalWorkSessionsCompleted: 0,
+    };
+  }
+  const mode =
+    rawPom.mode === 'work' || rawPom.mode === 'break' || rawPom.mode === 'paused'
+      ? rawPom.mode
+      : 'idle';
+  const isActive = typeof rawPom.isActive === 'boolean' ? rawPom.isActive : false;
+  const workDurationMinutes =
+    typeof rawPom.workDurationMinutes === 'number' && rawPom.workDurationMinutes > 0
+      ? rawPom.workDurationMinutes
+      : 25;
+  const breakDurationMinutes =
+    typeof rawPom.breakDurationMinutes === 'number' && rawPom.breakDurationMinutes > 0
+      ? rawPom.breakDurationMinutes
+      : 5;
+  const remainingSeconds =
+    typeof rawPom.remainingSeconds === 'number' && rawPom.remainingSeconds >= 0
+      ? rawPom.remainingSeconds
+      : workDurationMinutes * 60;
+  const totalWorkSessionsCompleted =
+    typeof rawPom.totalWorkSessionsCompleted === 'number' && rawPom.totalWorkSessionsCompleted >= 0
+      ? Math.floor(rawPom.totalWorkSessionsCompleted)
+      : 0;
+
+  return {
+    isActive,
+    mode,
+    workDurationMinutes,
+    breakDurationMinutes,
+    remainingSeconds,
+    totalWorkSessionsCompleted,
   };
 }
 

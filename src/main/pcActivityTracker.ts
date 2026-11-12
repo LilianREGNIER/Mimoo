@@ -9,7 +9,7 @@ import { type BrowserWindow, powerMonitor, screen } from 'electron';
 import { type ChildProcess, spawn } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
-import type { PcActivityBatch } from '../core/types';
+import type { ActiveWindowInfo, PcActivityBatch } from '../core/types';
 
 const POLL_INTERVAL_MS = 1000;
 const FLUSH_INTERVAL_MS = 2000;
@@ -36,10 +36,12 @@ export class PcActivityTracker {
   private flushTimer: ReturnType<typeof setInterval> | null = null;
   private hookProcess: ChildProcess | null = null;
   private lastCursorPoint: { x: number; y: number } | null = null;
+  private currentActiveWindow: ActiveWindowInfo | null = null;
   private pendingBatch: PcActivityBatch = {
     mouseClicks: 0,
     keyPresses: 0,
     activeSeconds: 0,
+    activeWindow: null,
   };
 
   constructor(windowOrGetter: BrowserWindow | (() => BrowserWindow | null)) {
@@ -103,12 +105,38 @@ export class PcActivityTracker {
             continue;
           }
           try {
-            const parsed = JSON.parse(trimmed) as { clicks?: number; keys?: number };
+            const parsed = JSON.parse(trimmed) as {
+              clicks?: number;
+              keys?: number;
+              window?: ActiveWindowInfo | null;
+            };
             if (typeof parsed.clicks === 'number' && parsed.clicks > 0) {
               this.pendingBatch.mouseClicks += parsed.clicks;
             }
             if (typeof parsed.keys === 'number' && parsed.keys > 0) {
               this.pendingBatch.keyPresses += parsed.keys;
+            }
+            if ('window' in parsed) {
+              const newWin = parsed.window ?? null;
+              const prev = this.currentActiveWindow;
+              const hasChanged =
+                (prev === null && newWin !== null) ||
+                (prev !== null && newWin === null) ||
+                (prev !== null &&
+                  newWin !== null &&
+                  (prev.title !== newWin.title ||
+                    Math.abs(prev.x - newWin.x) > 4 ||
+                    Math.abs(prev.y - newWin.y) > 4 ||
+                    Math.abs(prev.width - newWin.width) > 4 ||
+                    Math.abs(prev.height - newWin.height) > 4));
+
+              if (hasChanged) {
+                this.currentActiveWindow = newWin;
+                const win = this.getWindow();
+                if (win && !win.isDestroyed() && !win.webContents.isDestroyed()) {
+                  win.webContents.send('pet:active-window-changed', newWin);
+                }
+              }
             }
           } catch {
             // Ignorer les lignes tronquées ou malformées
@@ -206,12 +234,14 @@ export class PcActivityTracker {
       mouseClicks,
       keyPresses,
       activeSeconds,
+      activeWindow: this.currentActiveWindow,
     };
 
     this.pendingBatch = {
       mouseClicks: 0,
       keyPresses: 0,
       activeSeconds: 0,
+      activeWindow: this.currentActiveWindow,
     };
 
     const win = this.getWindow();

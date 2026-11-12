@@ -1709,3 +1709,276 @@ body.sponge-mode #pet-canvas {
   border-color: rgba(250, 204, 21, 0.6) !important;
   color: #fef08a !important;
 }
+
+/* Widget Flottant Pomodoro Focus (#pomodoro-pill) */
+.pomodoro-floating-pill {
+  position: fixed;
+  top: 18px;
+  right: 24px;
+  z-index: 45;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 14px;
+  border-radius: 999px;
+  background: rgba(15, 23, 42, 0.85);
+  border: 1px solid rgba(14, 165, 233, 0.4);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.45), 0 0 16px rgba(14, 165, 233, 0.2);
+  user-select: none;
+}
+
+.pomodoro-pill-icon {
+  font-size: 16px;
+}
+
+.pomodoro-time {
+  font-family: 'Consolas', monospace;
+  font-size: 15px;
+  font-weight: 700;
+  color: #38bdf8;
+  letter-spacing: 0.5px;
+}
+
+.pomodoro-badge {
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  padding: 2px 7px;
+  border-radius: 999px;
+}
+
+.pomodoro-badge.badge-work {
+  background: rgba(14, 165, 233, 0.25);
+  color: #7dd3fc;
+  border: 1px solid rgba(56, 189, 248, 0.5);
+}
+
+.pomodoro-badge.badge-break {
+  background: rgba(34, 197, 94, 0.25);
+  color: #86efac;
+  border: 1px solid rgba(74, 222, 128, 0.5);
+}
+
+.pomodoro-badge.badge-paused {
+  background: rgba(234, 179, 8, 0.25);
+  color: #fde047;
+  border: 1px solid rgba(250, 204, 21, 0.5);
+}
+
+.pomodoro-mini-actions {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.pomo-mini-btn {
+  background: rgba(255, 255, 255, 0.1);
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  border-radius: 6px;
+  color: #f8fafc;
+  cursor: pointer;
+  padding: 3px 7px;
+  font-size: 11px;
+  transition: all 0.15s ease;
+}
+
+.pomo-mini-btn:hover {
+  background: rgba(14, 165, 233, 0.35);
+  border-color: rgba(56, 189, 248, 0.6);
+}
+
+/* Bannière explicative Mode Lancer de Balle */
+.ball-mode-banner {
+  position: fixed;
+  bottom: 24px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 45;
+  background: rgba(15, 23, 42, 0.88);
+  border: 1px solid rgba(190, 242, 100, 0.5);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.45), 0 0 16px rgba(190, 242, 100, 0.25);
+  border-radius: 999px;
+  padding: 8px 18px;
+  color: #f7fee7;
+  font-size: 13px;
+  font-weight: 600;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  user-select: none;
+}
+
+.btn-cancel-ball-mini {
+  background: rgba(255, 255, 255, 0.12);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  border-radius: 999px;
+  color: #cbd5e1;
+  font-size: 11px;
+  padding: 3px 10px;
+  cursor: pointer;
+}
+
+.btn-cancel-ball-mini:hover {
+  background: rgba(239, 68, 68, 0.3);
+  color: #fecaca;
+  border-color: rgba(248, 113, 113, 0.5);
+}
+
+/* Fenêtre Pomodoro Modal */
+.pomodoro-modal-panel {
+  position: fixed;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  width: 480px;
+  max-width: calc(100vw - 32px);
+  z-index: 40;
+}
+
+.pomodoro-body {
+  padding: 18px 22px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.pomodoro-status-card {
+  background: rgba(15, 23, 42, 0.65);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: var(--radius-md);
+  padding: 18px;
+  text-align: center;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+}
+
+.pomodoro-timer-display {
+  font-family: 'Consolas', monospace;
+  font-size: 44px;
+  font-weight: 700;
+  color: #38bdf8;
+  letter-spacing: 2px;
+  text-shadow: 0 0 16px rgba(56, 189, 248, 0.4);
+}
+
+.pomodoro-phase-label {
+  font-size: 13px;
+  color: var(--text-secondary);
+}
+
+.pomodoro-sessions-counter {
+  font-size: 11.5px;
+  color: #cbd5e1;
+  margin-top: 4px;
+}
+
+.pomodoro-sessions-counter strong {
+  color: #facc15;
+}
+
+.pomodoro-presets-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 8px;
+}
+
+.pomodoro-preset-btn {
+  background: rgba(30, 41, 59, 0.6);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: var(--radius-sm);
+  padding: 10px;
+  color: #e2e8f0;
+  cursor: pointer;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 3px;
+  transition: all 0.18s ease;
+}
+
+.pomodoro-preset-btn:hover {
+  background: rgba(14, 165, 233, 0.18);
+  border-color: rgba(56, 189, 248, 0.45);
+}
+
+.pomodoro-preset-btn.active {
+  background: rgba(14, 165, 233, 0.28);
+  border-color: rgba(56, 189, 248, 0.7);
+  box-shadow: 0 0 12px rgba(14, 165, 233, 0.2);
+}
+
+.pomodoro-preset-btn strong {
+  font-size: 13px;
+  color: #ffffff;
+}
+
+.pomodoro-preset-btn small {
+  font-size: 10.5px;
+  color: var(--text-secondary);
+}
+
+.pomodoro-actions-row {
+  display: flex;
+  gap: 10px;
+  margin-top: 4px;
+}
+
+.pomodoro-primary-btn {
+  flex: 1;
+  background: linear-gradient(135deg, #0284c7, #0369a1);
+  border: 1px solid rgba(56, 189, 248, 0.6);
+  border-radius: var(--radius-sm);
+  color: #ffffff;
+  padding: 10px 16px;
+  font-size: 13.5px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.pomodoro-primary-btn:hover {
+  background: linear-gradient(135deg, #0369a1, #075985);
+  box-shadow: 0 0 14px rgba(14, 165, 233, 0.4);
+}
+
+.pomodoro-secondary-btn {
+  flex: 1;
+  background: rgba(234, 179, 8, 0.2);
+  border: 1px solid rgba(250, 204, 21, 0.5);
+  border-radius: var(--radius-sm);
+  color: #fef08a;
+  padding: 10px 16px;
+  font-size: 13.5px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.pomodoro-secondary-btn:hover {
+  background: rgba(234, 179, 8, 0.32);
+}
+
+.pomodoro-danger-btn {
+  background: rgba(239, 68, 68, 0.2);
+  border: 1px solid rgba(248, 113, 113, 0.5);
+  border-radius: var(--radius-sm);
+  color: #fca5a5;
+  padding: 10px 16px;
+  font-size: 13.5px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.pomodoro-danger-btn:hover {
+  background: rgba(239, 68, 68, 0.35);
+}
+
+/* Bouton actif Musique */
+.action-btn.active-music {
+  background: linear-gradient(135deg, rgba(236, 72, 153, 0.35), rgba(139, 92, 246, 0.35)) !important;
+  border-color: rgba(244, 114, 182, 0.75) !important;
+  box-shadow: 0 0 14px rgba(236, 72, 153, 0.35) !important;
+}

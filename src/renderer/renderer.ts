@@ -13,6 +13,7 @@ import {
   createInitialSaveData,
   PetEngine,
   STARTER_FORM_IDS,
+  type ActiveWindowInfo,
   type BootstrapPayload,
   type CosmeticItem,
   type DisplayBoundsInfo,
@@ -26,11 +27,15 @@ import {
   type MiniGameResult,
   type NeedKey,
   type PetState,
+  type PomodoroMode,
+  type PomodoroState,
+  type PomodoroTickResult,
   type SandboxConditionType,
   type SpeciesFormDefinition,
   type StarterFormId,
   type TrayActionType,
 } from '../core';
+import { BallEntity } from './ballEntity';
 import { HitTester } from './hitTester';
 import { MiniGamesController } from './miniGames';
 import { OnlineManager } from './onlineManager';
@@ -127,6 +132,15 @@ class DesktopPetRendererApp {
   private isSpongeMode = false;
   private isPlayingTogetherWithFriend = false;
 
+  // Mode Balle & Mode Musique
+  private readonly ballEntity = new BallEntity();
+  private isBallThrowMode = false;
+  private isMusicMode = false;
+
+  // Mode Focus & Pomodoro
+  private selectedPomodoroWorkMinutes = 25;
+  private selectedPomodoroBreakMinutes = 5;
+
   // Cadence de rendu adaptative (30 FPS actif / 5 FPS éco repos)
   private isActiveFpsMode = true;
   private currentTargetFps = 30;
@@ -146,6 +160,19 @@ class DesktopPetRendererApp {
   private readonly sandboxModalEl = document.getElementById('sandbox-modal');
   private readonly shopModalEl = document.getElementById('shop-modal');
   private readonly onlineModalEl = document.getElementById('online-modal');
+  private readonly pomodoroModalEl = document.getElementById('pomodoro-modal');
+  private readonly pomodoroPillEl = document.getElementById('pomodoro-pill');
+  private readonly pomodoroTimerLabelEl = document.getElementById('pomodoro-timer-label');
+  private readonly pomodoroModeBadgeEl = document.getElementById('pomodoro-mode-badge');
+  private readonly pomodoroDisplayBigEl = document.getElementById('pomodoro-display-big');
+  private readonly pomodoroPhaseBigEl = document.getElementById('pomodoro-phase-big');
+  private readonly pomodoroSessionsCountEl = document.getElementById('pomodoro-sessions-count');
+  private readonly btnPomodoroStartEl = document.getElementById('btn-pomodoro-start');
+  private readonly btnPomodoroPauseEl = document.getElementById('btn-pomodoro-pause');
+  private readonly btnPomodoroStopEl = document.getElementById('btn-pomodoro-stop');
+  private readonly btnPomoToggleEl = document.getElementById('btn-pomo-toggle');
+  private readonly btnPomoStopEl = document.getElementById('btn-pomo-stop');
+  private readonly ballModeBannerEl = document.getElementById('ball-mode-banner');
   private isDevEdition = false;
 
   // Dialogues spontanés ("de temps en temps, juste comme ça")
@@ -227,6 +254,28 @@ class DesktopPetRendererApp {
         this.updateFloatingPanelsPosition();
         void this.persistSaveState();
       },
+      onBallGrabbed: () => {
+        this.ballEntity.state = 'carried';
+        this.animator.setCarryingBall(true);
+        this.showSpeechBubble("J'ai la balle ! 🎾 Je te la rapporte !", 2200);
+      },
+      onBallReturned: () => {
+        this.ballEntity.reset();
+        this.animator.setCarryingBall(false);
+        this.engine.addCoins(10);
+        this.engine.boostHappiness(15);
+        this.animator.spawnParticles('heart', this.petActor.x, this.petActor.y - 15, 6);
+        this.animator.spawnParticles('sparkle', this.petActor.x, this.petActor.y - 20, 6);
+        this.animator.setState('happy', 2000);
+        this.showSpeechBubble("🎾 Bravo ! Tu m'as bien lancé la balle ! (+10 🪙)", 3500);
+        this.refreshHudUI();
+        void this.persistSaveState();
+      },
+      onCursorWiggleExcited: () => {
+        this.animator.spawnParticles('heart', this.petActor.x, this.petActor.y - 20, 5);
+        this.showSpeechBubble("Hihi ! Tu bouges vite ! 😄", 2000);
+        this.engine.boostHappiness(2);
+      },
     });
 
     this.petActor.setScales(initialSpecies?.scale ?? 1, settings.petScale ?? 1);
@@ -264,6 +313,11 @@ class DesktopPetRendererApp {
         const dist = Math.hypot(cx - this.onlineManager.friendX, cy - this.onlineManager.friendY);
         return dist < 45;
       },
+      isBallThrowModeActive: () => this.isBallThrowMode,
+      isPointOverBall: (cx, cy) => {
+        if (!this.ballEntity.active || this.ballEntity.state !== 'stopped') return false;
+        return Math.hypot(cx - this.ballEntity.x, cy - this.ballEntity.y) < 22;
+      },
     });
 
     // 6. Construction des listes dynamiques et écouteurs d'événements UI / IPC
@@ -276,6 +330,7 @@ class DesktopPetRendererApp {
     this.bindIpcListeners();
 
     this.refreshHudUI();
+    this.refreshPomodoroUI();
     this.setDevEdition(Boolean(payload.isDevEdition));
     this.hitTester.evaluateAt(-1000, -1000);
 
@@ -357,7 +412,9 @@ class DesktopPetRendererApp {
       !this.hudEl?.classList.contains('hidden') ||
       !this.statsModalEl?.classList.contains('hidden') ||
       !this.shopModalEl?.classList.contains('hidden') ||
-      !this.onlineModalEl?.classList.contains('hidden');
+      !this.onlineModalEl?.classList.contains('hidden') ||
+      !this.pomodoroModalEl?.classList.contains('hidden') ||
+      !this.ballModeBannerEl?.classList.contains('hidden');
 
     const isSpeechVisible = !this.speechBubbleEl?.classList.contains('hidden');
     const animState = this.animator.getState();
@@ -373,6 +430,10 @@ class DesktopPetRendererApp {
 
     const isActive =
       this.isSpongeMode ||
+      this.isBallThrowMode ||
+      this.ballEntity.active ||
+      this.isMusicMode ||
+      (this.engine.getPomodoroState()?.isActive ?? false) ||
       this.petActor.isMoving ||
       this.petActor.isDragging ||
       this.petActor.isHovering ||
@@ -413,8 +474,33 @@ class DesktopPetRendererApp {
     }
 
     const prevFormId = this.engine.getState().formId;
+    const settings = this.engine.getSaveData().settings;
     const tickResult = this.engine.tick(deltaSeconds, nowMs);
     const evoCheck = this.engine.checkEvolution();
+
+    // Tick du chronomètre Pomodoro / Focus
+    const pomoTick = this.engine.tickPomodoro(deltaSeconds);
+    if (pomoTick.phaseCompleted === 'work') {
+      this.animator.setActiveDialogueProp('stretching', 4000);
+      this.animator.spawnParticles('sparkle', this.petActor.x, this.petActor.y - 20, 10);
+      this.showSpeechBubble("Session Focus terminée ! Bravo, on fait une petite pause méritée ! ☕ (+50 🪙)", 5000);
+      if (settings.notificationsEnabled) {
+        void window.petAPI?.notifyCriticalNeed(
+          'Session Focus terminée ! ⏱️🎉',
+          'Bravo ! Prenez 5 minutes de pause méritée. (+50 🪙)'
+        );
+      }
+      void this.persistSaveState();
+    } else if (pomoTick.phaseCompleted === 'break') {
+      this.showSpeechBubble("Pause terminée ! Prêt(e) pour une nouvelle session de concentration ? 🚀", 4500);
+      if (settings.notificationsEnabled) {
+        void window.petAPI?.notifyCriticalNeed(
+          'Pause terminée ! ☕',
+          'Prêt(e) à relancer une session de concentration ?'
+        );
+      }
+    }
+    this.refreshPomodoroUI();
 
     const evolved = tickResult.evolved || evoCheck.evolved;
     const newForm = tickResult.newForm ?? evoCheck.newForm;
@@ -425,7 +511,6 @@ class DesktopPetRendererApp {
 
     // Synchronisation de la vitesse et de l'échelle avec la forme courante
     const currentSpecies = this.engine.getCurrentSpeciesForm();
-    const settings = this.engine.getSaveData().settings;
     if (currentSpecies) {
       this.petActor.setScales(currentSpecies.scale, settings.petScale);
       this.petActor.setWalkSpeed(currentSpecies.walkSpeed);
@@ -520,6 +605,7 @@ class DesktopPetRendererApp {
       !this.statsModalEl?.classList.contains('hidden') ||
       !this.shopModalEl?.classList.contains('hidden') ||
       !this.onlineModalEl?.classList.contains('hidden') ||
+      !this.pomodoroModalEl?.classList.contains('hidden') ||
       !this.drawerFoodsEl?.classList.contains('hidden') ||
       !this.drawerGamesEl?.classList.contains('hidden');
 
@@ -527,14 +613,32 @@ class DesktopPetRendererApp {
       this.petActor.stopWalking();
     }
 
+    const pomoState = this.engine.getPomodoroState();
+    const isPomodoroFocus = Boolean(pomoState && pomoState.isActive && pomoState.mode === 'work');
+    this.animator.setPomodoroFocus(isPomodoroFocus);
+
     const canWalk =
       pet.stage !== 'egg' &&
       !pet.isSleeping &&
       !this.isSpongeMode &&
+      !this.isBallThrowMode &&
+      !isPomodoroFocus &&
       !isAnyMenuOpen &&
       !this.animator.isInTemporaryAnimation() &&
       this.miniGames.getActiveGame() !== 'rps_duel' &&
       (this.miniGames.getActiveGame() === 'star_catch' || !hasPriorityNeedPose);
+
+    // Mise à jour de la balle de tennis (rebonds, frottements, roulement)
+    this.ballEntity.update(dtSeconds, this.petActor.getGroundY(), window.innerWidth);
+    if (
+      this.ballEntity.active &&
+      (this.ballEntity.state === 'flying' ||
+        this.ballEntity.state === 'rolling' ||
+        this.ballEntity.state === 'stopped')
+    ) {
+      this.petActor.updateBallTarget(this.ballEntity.x, this.ballEntity.y);
+    }
+    this.animator.setCarryingBall(this.petActor.getIsCarryingBall());
 
     this.petActor.update(dtSeconds, { canWalk });
     this.miniGames.update(dtSeconds);
@@ -634,6 +738,9 @@ class DesktopPetRendererApp {
       this.ctx.restore();
     }
 
+    // Rendu de la balle de tennis interactive
+    this.ballEntity.render(this.ctx);
+
     this.miniGames.render(this.ctx);
   }
 
@@ -649,6 +756,18 @@ class DesktopPetRendererApp {
     });
 
     this.canvas.addEventListener('mousedown', (e) => {
+      // 1) Si le mode Lancer de balle est actif, ce clic projette la balle vers les coordonnées du curseur
+      if (this.isBallThrowMode) {
+        const startX = this.petActor.x;
+        const startY = this.petActor.y - 30;
+        this.ballEntity.launch(startX, startY, e.clientX, e.clientY);
+        this.petActor.startFetchingBall(e.clientX, e.clientY);
+        this.isBallThrowMode = false;
+        this.ballModeBannerEl?.classList.add('hidden');
+        this.hitTester.refresh();
+        this.showSpeechBubble("Attrape ! 🎾 Va chercher !", 2200);
+        return;
+      }
       if (this.miniGames.handleCanvasMouseDown(e.clientX, e.clientY)) {
         return;
       }
@@ -673,6 +792,9 @@ class DesktopPetRendererApp {
       if (e.key === 'Escape') {
         if (this.isSpongeMode) {
           this.stopSpongeMode();
+        }
+        if (this.isBallThrowMode) {
+          this.cancelBallThrowMode();
         }
         this.closeAllPanels();
       } else if (e.key === 'F2') {
@@ -731,6 +853,14 @@ class DesktopPetRendererApp {
 
     document.getElementById('btn-action-clean')?.addEventListener('click', () => {
       this.handleCleanAction();
+    });
+
+    document.getElementById('btn-action-pomodoro')?.addEventListener('click', () => {
+      this.openPomodoroModal();
+    });
+
+    document.getElementById('btn-action-music')?.addEventListener('click', () => {
+      this.toggleMusicMode();
     });
 
     document.getElementById('btn-action-shop')?.addEventListener('click', () => {
@@ -875,6 +1005,72 @@ class DesktopPetRendererApp {
       this.miniGames.startRpsDuel(this.engine.getState().name);
     });
 
+    // Interaction Mini-Jeu 🎾 Lancer de balle au bureau
+    document.getElementById('btn-start-ball-fetch')?.addEventListener('click', () => {
+      this.startBallThrowMode();
+    });
+
+    document.getElementById('btn-cancel-ball')?.addEventListener('click', () => {
+      this.cancelBallThrowMode();
+    });
+
+    // Minuteur Focus / Pomodoro Modal & Widget Flottant
+    document.getElementById('btn-close-pomodoro')?.addEventListener('click', () => {
+      this.closePomodoroModal();
+    });
+
+    this.pomodoroPillEl?.addEventListener('click', (e) => {
+      const target = e.target as HTMLElement;
+      if (!target.closest('.pomo-mini-btn')) {
+        this.openPomodoroModal();
+      }
+    });
+
+    this.btnPomoToggleEl?.addEventListener('click', (e) => {
+      e.stopPropagation();
+      this.togglePomodoroSession();
+    });
+
+    this.btnPomoStopEl?.addEventListener('click', (e) => {
+      e.stopPropagation();
+      this.stopPomodoroSession();
+    });
+
+    this.btnPomodoroStartEl?.addEventListener('click', () => {
+      this.startPomodoroSession(this.selectedPomodoroWorkMinutes, this.selectedPomodoroBreakMinutes);
+    });
+
+    this.btnPomodoroPauseEl?.addEventListener('click', () => {
+      this.togglePomodoroSession();
+    });
+
+    this.btnPomodoroStopEl?.addEventListener('click', () => {
+      this.stopPomodoroSession();
+    });
+
+    const pomodoroPresets = document.querySelectorAll<HTMLButtonElement>('.pomodoro-preset-btn');
+    pomodoroPresets.forEach((btn) => {
+      btn.addEventListener('click', () => {
+        pomodoroPresets.forEach((b) => b.classList.remove('active'));
+        btn.classList.add('active');
+        const work = parseFloat(btn.dataset.work || '25');
+        const brk = parseFloat(btn.dataset.break || '5');
+        this.selectedPomodoroWorkMinutes = work;
+        this.selectedPomodoroBreakMinutes = brk;
+
+        const pState = this.engine.getPomodoroState();
+        if (!pState || !pState.isActive) {
+          const totalSec = Math.round(work * 60);
+          const mins = Math.floor(totalSec / 60);
+          const secs = totalSec % 60;
+          const timeStr = `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
+          if (this.pomodoroDisplayBigEl) {
+            this.pomodoroDisplayBigEl.textContent = timeStr;
+          }
+        }
+      });
+    });
+
     // Fenêtre Statistiques, Compendium & Réglages
     document.getElementById('btn-close-stats')?.addEventListener('click', () => {
       this.statsModalEl?.classList.add('hidden');
@@ -963,8 +1159,15 @@ class DesktopPetRendererApp {
       this.petActor.centerOnScreen();
     });
 
+    window.petAPI?.onActiveWindowChanged?.((windowInfo: ActiveWindowInfo | null) => {
+      this.petActor.setActiveWindow(windowInfo);
+    });
+
     window.petAPI?.onPcActivityBatch?.((batch) => {
       this.hasMainPcActivityHook = true;
+      if (batch.activeWindow !== undefined) {
+        this.petActor.setActiveWindow(batch.activeWindow);
+      }
       const res = this.engine.recordPcActivity(batch, Date.now());
       if (res.evolved && res.newForm) {
         this.handleEvolutionTriggered(res.newForm);
@@ -1011,6 +1214,21 @@ class DesktopPetRendererApp {
         this.drawerFoodsEl?.classList.add('hidden');
         this.drawerGamesEl?.classList.remove('hidden');
         this.updateFloatingPanelsPosition();
+        break;
+      case 'play-fetch':
+        this.startBallThrowMode();
+        break;
+      case 'toggle-pomodoro':
+        this.togglePomodoroSession();
+        break;
+      case 'start-pomodoro':
+        this.startPomodoroSession(25, 5);
+        break;
+      case 'stop-pomodoro':
+        this.stopPomodoroSession();
+        break;
+      case 'toggle-music-mode':
+        this.toggleMusicMode();
         break;
       case 'toggle-sleep':
         this.handleToggleSleep();
@@ -1755,7 +1973,178 @@ class DesktopPetRendererApp {
     this.shopModalEl?.classList.add('hidden');
     this.onlineModalEl?.classList.add('hidden');
     this.sandboxModalEl?.classList.add('hidden');
+    this.pomodoroModalEl?.classList.add('hidden');
+    if (this.isBallThrowMode) {
+      this.cancelBallThrowMode();
+    }
     this.hitTester.refresh();
+  }
+
+  private startBallThrowMode(): void {
+    const pet = this.engine.getState();
+    if (pet.stage === 'egg') {
+      this.showSpeechBubble("L'œuf doit d'abord éclore avant de jouer à la balle ! 🥚", 3000);
+      return;
+    }
+    if (pet.isSleeping) {
+      this.showSpeechBubble("Zzz... Votre familier dort paisiblement ! 💤", 2500);
+      return;
+    }
+    if (this.isSpongeMode) {
+      this.stopSpongeMode();
+    }
+    this.closeAllPanels();
+    this.isBallThrowMode = true;
+    this.ballModeBannerEl?.classList.remove('hidden');
+    this.hitTester.refresh();
+  }
+
+  private cancelBallThrowMode(): void {
+    this.isBallThrowMode = false;
+    this.ballModeBannerEl?.classList.add('hidden');
+    this.hitTester.refresh();
+  }
+
+  private toggleMusicMode(force?: boolean): void {
+    const pet = this.engine.getState();
+    if (pet.stage === 'egg') {
+      this.showSpeechBubble("L'œuf écoutera de la musique une fois éclos ! 🥚🎶", 2500);
+      return;
+    }
+    this.isMusicMode = force !== undefined ? force : !this.isMusicMode;
+    this.animator.setMusicMode(this.isMusicMode);
+    if (this.isMusicMode) {
+      this.showSpeechBubble("Mode Musique activé ! 🎧🎶 En rythme !", 3000);
+      this.animator.spawnParticles('sparkle', this.petActor.x, this.petActor.y - 30, 6);
+    } else {
+      this.showSpeechBubble("Casque audio rangé ! 🎧", 2000);
+    }
+  }
+
+  private openPomodoroModal(): void {
+    this.closeAllPanels();
+    this.refreshPomodoroUI();
+    this.pomodoroModalEl?.classList.remove('hidden');
+    this.hitTester.refresh();
+  }
+
+  private closePomodoroModal(): void {
+    this.pomodoroModalEl?.classList.add('hidden');
+    this.hitTester.refresh();
+  }
+
+  private startPomodoroSession(workMin = 25, breakMin = 5): void {
+    const pet = this.engine.getState();
+    if (pet.stage === 'egg') {
+      this.showSpeechBubble("L'œuf doit d'abord éclore avant d'étudier avec vous ! 🥚", 3000);
+      return;
+    }
+    this.engine.startPomodoro(workMin, breakMin);
+    this.refreshPomodoroUI();
+    this.closePomodoroModal();
+    this.showSpeechBubble(`C'est parti pour ${workMin} min de concentration ! Bon travail ! 💻✨`, 4000);
+    void this.persistSaveState();
+  }
+
+  private togglePomodoroSession(): void {
+    const pState = this.engine.getPomodoroState();
+    if (!pState || !pState.isActive) {
+      this.startPomodoroSession(this.selectedPomodoroWorkMinutes, this.selectedPomodoroBreakMinutes);
+      return;
+    }
+    if (pState.mode === 'paused') {
+      this.engine.resumePomodoro();
+      this.showSpeechBubble("Session Focus reprise ! 💻", 2200);
+    } else {
+      this.engine.pausePomodoro();
+      this.showSpeechBubble("Session Focus en pause. ⏸", 2200);
+    }
+    this.refreshPomodoroUI();
+    void this.persistSaveState();
+  }
+
+  private stopPomodoroSession(): void {
+    this.engine.stopPomodoro();
+    this.refreshPomodoroUI();
+    this.showSpeechBubble("Session Focus terminée. ⏹", 2500);
+    void this.persistSaveState();
+  }
+
+  private refreshPomodoroUI(): void {
+    const pState = this.engine.getPomodoroState();
+    const isActive = Boolean(pState && pState.isActive);
+
+    if (isActive && pState) {
+      this.pomodoroPillEl?.classList.remove('hidden');
+
+      const totalSec = pState.remainingSeconds;
+      const mins = Math.floor(totalSec / 60);
+      const secs = totalSec % 60;
+      const timeStr = `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
+
+      if (this.pomodoroTimerLabelEl) {
+        this.pomodoroTimerLabelEl.textContent = timeStr;
+      }
+      if (this.pomodoroDisplayBigEl) {
+        this.pomodoroDisplayBigEl.textContent = timeStr;
+      }
+
+      if (this.pomodoroModeBadgeEl) {
+        this.pomodoroModeBadgeEl.className = 'pomodoro-badge';
+        if (pState.mode === 'work') {
+          this.pomodoroModeBadgeEl.classList.add('badge-work');
+          this.pomodoroModeBadgeEl.textContent = 'Focus';
+        } else if (pState.mode === 'break') {
+          this.pomodoroModeBadgeEl.classList.add('badge-break');
+          this.pomodoroModeBadgeEl.textContent = 'Pause ☕';
+        } else {
+          this.pomodoroModeBadgeEl.classList.add('badge-paused');
+          this.pomodoroModeBadgeEl.textContent = 'En pause ⏸';
+        }
+      }
+
+      if (this.pomodoroPhaseBigEl) {
+        if (pState.mode === 'work') {
+          this.pomodoroPhaseBigEl.textContent = 'Session de concentration en cours... Restez focus !';
+        } else if (pState.mode === 'break') {
+          this.pomodoroPhaseBigEl.textContent = 'Pause méritée — étirez-vous, buvez un verre d’eau ! ☕';
+        } else {
+          this.pomodoroPhaseBigEl.textContent = 'Session en pause ⏸';
+        }
+      }
+
+      if (this.btnPomoToggleEl) {
+        this.btnPomoToggleEl.textContent = pState.mode === 'paused' ? '▶' : '⏸';
+      }
+
+      if (this.btnPomodoroStartEl) this.btnPomodoroStartEl.classList.add('hidden');
+      if (this.btnPomodoroPauseEl) {
+        this.btnPomodoroPauseEl.classList.remove('hidden');
+        this.btnPomodoroPauseEl.textContent = pState.mode === 'paused' ? '▶ Reprendre' : '⏸ Mettre en pause';
+      }
+      if (this.btnPomodoroStopEl) this.btnPomodoroStopEl.classList.remove('hidden');
+    } else {
+      this.pomodoroPillEl?.classList.add('hidden');
+
+      const workSec = Math.round(this.selectedPomodoroWorkMinutes * 60);
+      const mins = Math.floor(workSec / 60);
+      const secs = workSec % 60;
+      const timeStr = `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
+
+      if (this.pomodoroDisplayBigEl) {
+        this.pomodoroDisplayBigEl.textContent = timeStr;
+      }
+      if (this.pomodoroPhaseBigEl) {
+        this.pomodoroPhaseBigEl.textContent = 'Prêt pour une session de concentration';
+      }
+      if (this.btnPomodoroStartEl) this.btnPomodoroStartEl.classList.remove('hidden');
+      if (this.btnPomodoroPauseEl) this.btnPomodoroPauseEl.classList.add('hidden');
+      if (this.btnPomodoroStopEl) this.btnPomodoroStopEl.classList.add('hidden');
+    }
+
+    if (this.pomodoroSessionsCountEl) {
+      this.pomodoroSessionsCountEl.textContent = String(pState?.totalWorkSessionsCompleted ?? 0);
+    }
   }
 
   private initDraggableShopModal(): void {

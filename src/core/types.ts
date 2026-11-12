@@ -318,6 +318,41 @@ export interface PetState {
   ownedCosmetics: string[];
   /** Objets cosmétiques actuellement équipés sur le familier. */
   equippedCosmetics: EquippedCosmetics;
+  /** État du minuteur Focus / Pomodoro pour la productivité. */
+  pomodoro?: PomodoroState;
+}
+
+/** Informations de géométrie de la fenêtre active au premier plan sous Windows. */
+export interface ActiveWindowInfo {
+  title: string;
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+}
+
+/** Modes du système Pomodoro de productivité. */
+export type PomodoroMode = 'idle' | 'work' | 'break' | 'paused';
+
+/** État complet du minuteur Pomodoro. */
+export interface PomodoroState {
+  isActive: boolean;
+  mode: PomodoroMode;
+  workDurationMinutes: number;
+  breakDurationMinutes: number;
+  remainingSeconds: number;
+  totalWorkSessionsCompleted: number;
+}
+
+/** Résultat de l'avancée d'une seconde du minuteur Pomodoro. */
+export interface PomodoroTickResult {
+  state: PomodoroState;
+  phaseCompleted?: 'work' | 'break';
+  reward?: {
+    coins: number;
+    happiness: number;
+    energy: number;
+  };
 }
 
 /** Format de sauvegarde locale versionné (Schéma v1). */
@@ -371,6 +406,11 @@ export type TrayActionType =
   | 'open-online'
   | 'open-compendium'
   | 'open-sandbox'
+  | 'start-pomodoro'
+  | 'toggle-pomodoro'
+  | 'stop-pomodoro'
+  | 'play-fetch'
+  | 'toggle-music-mode'
   | 'center-pet'
   | 'reset-pet';
 
@@ -379,6 +419,7 @@ export interface PcActivityBatch {
   mouseClicks: number;
   keyPresses: number;
   activeSeconds: number;
+  activeWindow?: ActiveWindowInfo | null;
 }
 
 /** Charge utile initiale renvoyée au Renderer lors de l'initialisation IPC. */
@@ -425,10 +466,12 @@ export interface PetIPCContract {
   onTrayAction(callback: (action: TrayActionType) => void): () => void;
   /** Écoute les changements de topologie d'écrans (ajout/retrait/résolution). */
   onDisplayChanged(callback: (displays: DisplayBoundsInfo[]) => void): () => void;
-  /** Écoute les lots périodiques d'activité PC (clics souris, frappes clavier anonymes, secondes actives). */
+  /** Écoute les lots périodiques d'activité PC (clics souris, frappes clavier anonymes, secondes actives, fenêtre active). */
   onPcActivityBatch?(
-    callback: (batch: { mouseClicks: number; keyPresses: number; activeSeconds: number }) => void
+    callback: (batch: PcActivityBatch) => void
   ): () => void;
+  /** Écoute spécifiquement les changements de la fenêtre active au premier plan sous Windows. */
+  onActiveWindowChanged?(callback: (windowInfo: ActiveWindowInfo | null) => void): () => void;
 }
 
 declare global {

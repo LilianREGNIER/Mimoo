@@ -1,6 +1,7 @@
 ﻿using System;
 using System.Diagnostics;
 using System.Runtime.InteropServices;
+using System.Text;
 using System.Threading;
 
 class Program {
@@ -14,6 +15,7 @@ class Program {
 
     private static int clickCount = 0;
     private static int keyCount = 0;
+    private static string lastWindowJson = "";
 
     private delegate IntPtr LowLevelProc(int nCode, IntPtr wParam, IntPtr lParam);
     private static LowLevelProc mouseProc = MouseHookCallback;
@@ -57,6 +59,23 @@ class Program {
     [DllImport("user32.dll")]
     private static extern sbyte GetMessage(out MSG lpMsg, IntPtr hWnd, uint wMsgFilterMin, uint wMsgFilterMax);
 
+    [DllImport("user32.dll")]
+    private static extern IntPtr GetForegroundWindow();
+
+    [DllImport("user32.dll", SetLastError = true)]
+    private static extern bool GetWindowRect(IntPtr hWnd, out RECT lpRect);
+
+    [DllImport("user32.dll", CharSet = CharSet.Auto, SetLastError = true)]
+    private static extern int GetWindowText(IntPtr hWnd, StringBuilder lpString, int nMaxCount);
+
+    [StructLayout(LayoutKind.Sequential)]
+    private struct RECT {
+        public int Left;
+        public int Top;
+        public int Right;
+        public int Bottom;
+    }
+
     [StructLayout(LayoutKind.Sequential)]
     private struct MSG {
         public IntPtr hwnd;
@@ -79,8 +98,39 @@ class Program {
         Timer reportTimer = new Timer((e) => {
             int c = Interlocked.Exchange(ref clickCount, 0);
             int k = Interlocked.Exchange(ref keyCount, 0);
-            if (c > 0 || k > 0) {
-                Console.WriteLine(string.Format("{{\"clicks\":{0},\"keys\":{1}}}", c, k));
+
+            string windowJson = "null";
+            try {
+                IntPtr fg = GetForegroundWindow();
+                if (fg != IntPtr.Zero) {
+                    RECT r;
+                    if (GetWindowRect(fg, out r)) {
+                        int w = r.Right - r.Left;
+                        int h = r.Bottom - r.Top;
+                        if (w > 120 && h > 80 && r.Left > -10000 && r.Top > -10000) {
+                            StringBuilder sb = new StringBuilder(256);
+                            GetWindowText(fg, sb, 256);
+                            string rawTitle = sb.ToString()
+                                .Replace("\\", "\\\\")
+                                .Replace("\"", "\\\"")
+                                .Replace("\r", "")
+                                .Replace("\n", "");
+                            windowJson = string.Format(
+                                "{{\"title\":\"{0}\",\"x\":{1},\"y\":{2},\"width\":{3},\"height\":{4}}}",
+                                rawTitle, r.Left, r.Top, w, h
+                            );
+                        }
+                    }
+                }
+            } catch {
+                windowJson = "null";
+            }
+
+            bool hasActivity = (c > 0 || k > 0);
+            bool windowChanged = (windowJson != lastWindowJson);
+            if (hasActivity || windowChanged) {
+                lastWindowJson = windowJson;
+                Console.WriteLine(string.Format("{{\"clicks\":{0},\"keys\":{1},\"window\":{2}}}", c, k, windowJson));
             }
         }, null, 500, 500);
 

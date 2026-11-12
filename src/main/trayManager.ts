@@ -115,12 +115,27 @@ export class TrayManager {
         click: () => this.sendTrayAction('play'),
       },
       {
+        label: '🎾 Lancer la balle au bureau',
+        click: () => this.sendTrayAction('play-fetch'),
+      },
+      {
         label: 'Dormir / Réveiller',
         click: () => this.sendTrayAction('toggle-sleep'),
       },
       {
         label: 'Nettoyer',
         click: () => this.sendTrayAction('clean'),
+      },
+      { type: 'separator' },
+      {
+        label: pet.pomodoro?.isActive && pet.pomodoro.mode === 'work'
+          ? `⏱️ Focus en cours (${Math.ceil((pet.pomodoro.remainingSeconds || 0) / 60)} min)`
+          : '⏱️ Démarrer Focus Pomodoro (25m)',
+        click: () => this.sendTrayAction('toggle-pomodoro'),
+      },
+      {
+        label: '🎵 Mode Musique / Casque Audio',
+        click: () => this.sendTrayAction('toggle-music-mode'),
       },
       { type: 'separator' },
       {

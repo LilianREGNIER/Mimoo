@@ -5,6 +5,7 @@
 
 import { contextBridge, ipcRenderer, type IpcRendererEvent } from 'electron';
 import type {
+  ActiveWindowInfo,
   BootstrapPayload,
   DisplayBoundsInfo,
   PcActivityBatch,
@@ -74,6 +75,16 @@ const petAPI: PetIPCContract = {
     ipcRenderer.on('pet:pc-activity-batch', listener);
     return () => {
       ipcRenderer.removeListener('pet:pc-activity-batch', listener);
+    };
+  },
+
+  onActiveWindowChanged(callback: (windowInfo: ActiveWindowInfo | null) => void): () => void {
+    const listener = (_event: IpcRendererEvent, windowInfo: ActiveWindowInfo | null): void => {
+      callback(windowInfo);
+    };
+    ipcRenderer.on('pet:active-window-changed', listener);
+    return () => {
+      ipcRenderer.removeListener('pet:active-window-changed', listener);
     };
   },
 };

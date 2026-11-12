@@ -15,6 +15,10 @@ export interface HitTestTargetProvider {
   isSpongeModeActive?: () => boolean;
   /** Teste si le curseur survole un pet ami en visite sur le bureau. */
   isPointOverFriendPet?: (clientX: number, clientY: number) => boolean;
+  /** Indique si le mode "Lancer de balle" est actif (capture le clic pour projeter la balle). */
+  isBallThrowModeActive?: () => boolean;
+  /** Teste si le curseur survole la balle de tennis au sol. */
+  isPointOverBall?: (clientX: number, clientY: number) => boolean;
 }
 
 /**
@@ -92,6 +96,14 @@ export class HitTester {
 
     // 3.5 Pet ami en visite sur le bureau
     if (this.provider.isPointOverFriendPet?.(clientX, clientY)) {
+      return true;
+    }
+
+    // 3.6 Mode Lancer de balle ou survol de la balle de tennis
+    if (this.provider.isBallThrowModeActive?.() === true) {
+      return true;
+    }
+    if (this.provider.isPointOverBall?.(clientX, clientY)) {
       return true;
     }
 

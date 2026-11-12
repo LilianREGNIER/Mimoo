@@ -72,7 +72,10 @@ export type DialoguePropType =
   | 'tennis_ball'
   | 'dance'
   | 'keyboard'
-  | 'sun';
+  | 'sun'
+  | 'laptop'
+  | 'headphones'
+  | 'stretching';
 
 export interface CanvasParticle {
   kind: ParticleKind;
@@ -296,6 +299,21 @@ export class SpriteAnimator {
   private particles: CanvasParticle[] = [];
   private activeDialogueProp: DialoguePropType | null = null;
   private dialoguePropRemainingMs = 0;
+  private isPomodoroFocus = false;
+  private isMusicMode = false;
+  private isCarryingBall = false;
+
+  public setPomodoroFocus(focus: boolean): void {
+    this.isPomodoroFocus = focus;
+  }
+
+  public setMusicMode(music: boolean): void {
+    this.isMusicMode = music;
+  }
+
+  public setCarryingBall(carrying: boolean): void {
+    this.isCarryingBall = carrying;
+  }
 
   /**
    * Précharge les 19 spritesheets depuis `sprites/<formId>.png` (avec repli automatique).
@@ -752,7 +770,7 @@ export class SpriteAnimator {
       const intensity = Math.min(1, this.eggShakeRemainingMs / 120);
       offsetX += Math.sin(this.totalTimeSeconds * 85) * 6.5 * intensity;
       offsetY += Math.cos(this.totalTimeSeconds * 110) * 3.5 * intensity;
-    } else if (this.activeDialogueProp === 'dance' && formId !== 'egg') {
+    } else if ((this.activeDialogueProp === 'dance' || this.isMusicMode) && formId !== 'egg') {
       // Danse rythmée joyeuse : balancement gauche/droite et petits sauts en cadence
       offsetX += Math.sin(this.totalTimeSeconds * 16) * 5.5;
       offsetY -= Math.abs(Math.sin(this.totalTimeSeconds * 11)) * 9;
@@ -920,6 +938,20 @@ export class SpriteAnimator {
         this.activeDialogueProp,
         flipX
       );
+    }
+
+    // 5.9 Accessoires d'état persistant (Focus Pomodoro, Casque Musique, Balle de tennis rapportée)
+    if (formId !== 'egg') {
+      if (this.isPomodoroFocus) {
+        this.renderLaptopProp(ctx, renderX, renderY, flipX);
+        this.renderStudyGlassesProp(ctx, renderX, renderY, flipX);
+      }
+      if (this.isMusicMode) {
+        this.renderHeadphonesProp(ctx, renderX, renderY, flipX);
+      }
+      if (this.isCarryingBall) {
+        this.renderCarriedBallProp(ctx, renderX, renderY, flipX);
+      }
     }
 
     // 6. Bulle de pensée animée au-dessus du familier (faim, besoin de câlin, besoin de jouer, saleté)
@@ -1440,6 +1472,14 @@ export class SpriteAnimator {
       case 'sun':
         this.renderSunProp(ctx, renderX, renderY);
         break;
+      case 'laptop':
+        this.renderLaptopProp(ctx, renderX, renderY, flipX);
+        break;
+      case 'headphones':
+        this.renderHeadphonesProp(ctx, renderX, renderY, flipX);
+        break;
+      case 'stretching':
+        break;
     }
   }
 
@@ -1688,6 +1728,182 @@ export class SpriteAnimator {
     ctx.lineWidth = 1;
     ctx.beginPath();
     ctx.arc(0, 1, 3.5, 0.2, Math.PI - 0.2);
+    ctx.stroke();
+
+    ctx.restore();
+  }
+
+  private renderLaptopProp(
+    ctx: CanvasRenderingContext2D,
+    x: number,
+    y: number,
+    flipX: boolean
+  ): void {
+    const px = x + (flipX ? -26 : 26);
+    const py = y + 8;
+
+    ctx.save();
+    ctx.translate(px, py);
+
+    // Base clavier
+    ctx.fillStyle = '#1e293b';
+    ctx.strokeStyle = '#475569';
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.moveTo(-11, 4);
+    ctx.lineTo(11, 4);
+    ctx.lineTo(9, 8);
+    ctx.lineTo(-9, 8);
+    ctx.closePath();
+    ctx.fill();
+    ctx.stroke();
+
+    // Écran incliné ouvert
+    ctx.fillStyle = '#0f172a';
+    ctx.strokeStyle = '#64748b';
+    ctx.lineWidth = 1.2;
+    ctx.beginPath();
+    ctx.moveTo(-9, 4);
+    ctx.lineTo(9, 4);
+    ctx.lineTo(10, -10);
+    ctx.lineTo(-10, -10);
+    ctx.closePath();
+    ctx.fill();
+    ctx.stroke();
+
+    // Dalle d'écran cyan lumineuse
+    ctx.fillStyle = 'rgba(6, 182, 212, 0.85)';
+    ctx.fillRect(-8, -8, 16, 10);
+
+    // Lignes de code en blanc
+    ctx.fillStyle = '#ffffff';
+    ctx.fillRect(-6, -6, 7, 1.5);
+    ctx.fillRect(-6, -3.5, 11, 1.5);
+    ctx.fillRect(-6, -1, 5, 1.5);
+
+    // Curseur clignotant
+    if (Math.sin(this.totalTimeSeconds * 8) > 0) {
+      ctx.fillStyle = '#a5f3fc';
+      ctx.fillRect(0, -1, 2, 2);
+    }
+
+    ctx.restore();
+  }
+
+  private renderStudyGlassesProp(
+    ctx: CanvasRenderingContext2D,
+    x: number,
+    y: number,
+    flipX: boolean
+  ): void {
+    const py = y - 6;
+    const px = x;
+
+    ctx.save();
+    ctx.translate(px, py);
+
+    ctx.strokeStyle = '#fbbf24'; // Monture dorée
+    ctx.lineWidth = 1.5;
+    ctx.fillStyle = 'rgba(255, 255, 255, 0.22)';
+
+    // Verre gauche
+    ctx.beginPath();
+    ctx.arc(-7, 0, 4.5, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.stroke();
+
+    // Verre droit
+    ctx.beginPath();
+    ctx.arc(7, 0, 4.5, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.stroke();
+
+    // Pont nasal
+    ctx.beginPath();
+    ctx.moveTo(-2.5, -0.5);
+    ctx.lineTo(2.5, -0.5);
+    ctx.stroke();
+
+    // Reflet blanc sur les verres
+    ctx.strokeStyle = 'rgba(255, 255, 255, 0.7)';
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.moveTo(-9, -2);
+    ctx.lineTo(-6, -4);
+    ctx.moveTo(5, -2);
+    ctx.lineTo(8, -4);
+    ctx.stroke();
+
+    ctx.restore();
+  }
+
+  private renderHeadphonesProp(
+    ctx: CanvasRenderingContext2D,
+    x: number,
+    y: number,
+    flipX: boolean
+  ): void {
+    const py = y - 9;
+    const px = x;
+
+    ctx.save();
+    ctx.translate(px, py);
+
+    // Arceau au-dessus de la tête
+    ctx.strokeStyle = '#8b5cf6';
+    ctx.lineWidth = 3.5;
+    ctx.lineCap = 'round';
+    ctx.beginPath();
+    ctx.arc(0, -9, 16, Math.PI * 1.05, Math.PI * 1.95);
+    ctx.stroke();
+
+    // Écouteur gauche (coussinet rose néon)
+    ctx.fillStyle = '#ec4899';
+    ctx.strokeStyle = '#be185d';
+    ctx.lineWidth = 1.5;
+    ctx.beginPath();
+    ctx.ellipse(-15, -5, 4.5, 7, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.stroke();
+
+    // Écouteur droit
+    ctx.beginPath();
+    ctx.ellipse(15, -5, 4.5, 7, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.stroke();
+
+    // Détail métallique
+    ctx.fillStyle = '#f472b6';
+    ctx.fillRect(-16, -6, 2, 3);
+    ctx.fillRect(14, -6, 2, 3);
+
+    ctx.restore();
+  }
+
+  private renderCarriedBallProp(
+    ctx: CanvasRenderingContext2D,
+    x: number,
+    y: number,
+    flipX: boolean
+  ): void {
+    const px = x + (flipX ? -14 : 14);
+    const py = y + 3;
+
+    ctx.save();
+    ctx.translate(px, py);
+
+    ctx.fillStyle = '#bef264';
+    ctx.strokeStyle = '#4d7c0f';
+    ctx.lineWidth = 1.2;
+    ctx.beginPath();
+    ctx.arc(0, 0, 7.5, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.stroke();
+
+    ctx.strokeStyle = '#ffffff';
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.arc(-2, 0, 5, -Math.PI / 2, Math.PI / 2);
     ctx.stroke();
 
     ctx.restore();

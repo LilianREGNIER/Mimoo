@@ -130,6 +130,13 @@
               <small>3 manches rapides contre ton familier !</small>
             </div>
           </button>
+          <button id="btn-start-ball-fetch" class="game-choice-card">
+            <span class="game-choice-icon">🎾</span>
+            <div class="game-choice-text">
+              <strong>Lancer de Balle au Bureau</strong>
+              <small>Clique pour lancer, le pet court la chercher et la rapporte !</small>
+            </div>
+          </button>
         </div>
       </div>
 
@@ -155,6 +162,14 @@
           <span class="action-emoji">🧽</span>
           <span class="action-label">Nettoyer</span>
           <span id="badge-poop-count" class="action-Counter hidden">0</span>
+        </button>
+        <button id="btn-action-pomodoro" class="action-btn" title="Session Focus / Chronomètre Pomodoro">
+          <span class="action-emoji">⏱️</span>
+          <span class="action-label">Focus Pomo</span>
+        </button>
+        <button id="btn-action-music" class="action-btn" title="Casque Audio / Mode Musique">
+          <span class="action-emoji">🎧</span>
+          <span class="action-label">Musique</span>
         </button>
         <button id="btn-action-shop" class="action-btn" title="Boutique cosmétique et garde-robe">
           <span class="action-emoji">🛍️</span>
@@ -378,6 +393,83 @@
               <button type="button" id="btn-reset-pet" class="btn-danger">Nouvel Œuf 🥚</button>
             </div>
           </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Widget Flottant Pomodoro Focus (#pomodoro-pill) -->
+    <div
+      id="pomodoro-pill"
+      class="glass-panel pomodoro-floating-pill ui-interactive hidden"
+      aria-label="Minuteur Pomodoro Focus"
+    >
+      <span class="pomodoro-pill-icon">⏱️</span>
+      <span id="pomodoro-timer-label" class="pomodoro-time">25:00</span>
+      <span id="pomodoro-mode-badge" class="pomodoro-badge badge-work">Focus</span>
+      <div class="pomodoro-mini-actions">
+        <button type="button" id="btn-pomo-toggle" class="pomo-mini-btn" title="Pause / Reprendre">⏸</button>
+        <button type="button" id="btn-pomo-stop" class="pomo-mini-btn" title="Arrêter la session">⏹</button>
+      </div>
+    </div>
+
+    <!-- Bannière explicative Mode Lancer de Balle (#ball-mode-banner) -->
+    <div id="ball-mode-banner" class="ball-mode-banner ui-interactive hidden">
+      🎾 Cliquez n'importe où sur l'écran pour lancer la balle ! 
+      <button type="button" id="btn-cancel-ball" class="btn-cancel-ball-mini">Ranger la balle (Échap)</button>
+    </div>
+
+    <!-- Fenêtre Pomodoro Modal (#pomodoro-modal) -->
+    <section
+      id="pomodoro-modal"
+      class="glass-panel pomodoro-modal-panel ui-interactive hidden"
+      aria-label="Gestion du mode Focus et Pomodoro"
+    >
+      <header class="modal-header">
+        <div class="modal-title-group">
+          <h2 class="modal-title">⏱️ Compagnon Focus & Pomodoro</h2>
+          <span class="modal-subtitle">Travaillez sereinement avec votre familier qui étudie à vos côtés</span>
+        </div>
+        <button id="btn-close-pomodoro" class="icon-close-btn" title="Fermer (Échap)">✕</button>
+      </header>
+
+      <div class="pomodoro-body">
+        <div class="pomodoro-status-card">
+          <div class="pomodoro-timer-display" id="pomodoro-display-big">25:00</div>
+          <div class="pomodoro-phase-label" id="pomodoro-phase-big">Prêt pour une session de concentration</div>
+          <div class="pomodoro-sessions-counter">
+            Sessions terminées : <strong id="pomodoro-sessions-count">0</strong> 🎉 (+50 🪙 par session)
+          </div>
+        </div>
+
+        <div class="pomodoro-presets-grid">
+          <button type="button" class="pomodoro-preset-btn active" data-work="25" data-break="5">
+            <strong>25 min Focus</strong>
+            <small>5 min de pause</small>
+          </button>
+          <button type="button" class="pomodoro-preset-btn" data-work="15" data-break="3">
+            <strong>15 min Flash</strong>
+            <small>3 min de pause</small>
+          </button>
+          <button type="button" class="pomodoro-preset-btn" data-work="45" data-break="10">
+            <strong>45 min Marathon</strong>
+            <small>10 min de pause</small>
+          </button>
+          <button type="button" class="pomodoro-preset-btn" data-work="0.5" data-break="0.2">
+            <strong>30 sec Test</strong>
+            <small>Test rapide</small>
+          </button>
+        </div>
+
+        <div class="pomodoro-actions-row">
+          <button type="button" id="btn-pomodoro-start" class="pomodoro-primary-btn">
+            ▶ Démarrer la session
+          </button>
+          <button type="button" id="btn-pomodoro-pause" class="pomodoro-secondary-btn hidden">
+            ⏸ Mettre en pause
+          </button>
+          <button type="button" id="btn-pomodoro-stop" class="pomodoro-danger-btn hidden">
+            ⏹ Arrêter
+          </button>
         </div>
       </div>
     </section>
