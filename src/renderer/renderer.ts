@@ -390,16 +390,22 @@ class DesktopPetRendererApp {
       this.runOneSecondLogicTick(elapsedSeconds);
     }
 
-    // Détermination du mode FPS adaptatif (30 FPS actif vs 5 FPS repos)
+    // Détermination du mode FPS adaptatif (actif vs 5 FPS repos)
     this.updateAdaptiveFpsTarget();
-    const frameIntervalMs = 1000 / this.currentTargetFps;
+
     const elapsedFrameMs = timestamp - this.lastFrameTimestamp;
 
-    if (elapsedFrameMs < frameIntervalMs - 1) {
-      return;
+    // En mode repos éco (5 FPS), on espace les frames pour préserver CPU & batterie.
+    // En mode actif (vol balistique, lancer souris, escalade fenêtre, mini-jeux), aucun throttle
+    // artificiel pour assurer un 60 FPS parfait à chaque cycle requestAnimationFrame sans perte de frames.
+    if (!this.isActiveFpsMode) {
+      const frameIntervalMs = 1000 / this.currentTargetFps;
+      if (elapsedFrameMs < frameIntervalMs - 1) {
+        return;
+      }
     }
 
-    const dtSeconds = Math.min(0.25, elapsedFrameMs / 1000);
+    const dtSeconds = Math.min(0.25, Math.max(0.001, elapsedFrameMs > 0 ? elapsedFrameMs / 1000 : 0.016));
     this.lastFrameTimestamp = timestamp;
 
     this.updateFrame(dtSeconds);
@@ -439,6 +445,10 @@ class DesktopPetRendererApp {
       this.petActor.isAirborne ||
       this.petActor.isDragging ||
       this.petActor.getIsPerchingOnWindow() ||
+      this.petActor.getIsJumpingToWindow() ||
+      this.petActor.y < this.petActor.getGroundY() - 2 ||
+      Math.abs(this.petActor.vx) > 5 ||
+      Math.abs(this.petActor.vy) > 5 ||
       Math.abs(this.petActor.getDragStretchX() - 1.0) > 0.015 ||
       Math.abs(this.petActor.getDragStretchY() - 1.0) > 0.015 ||
       Math.abs(this.petActor.getDragAngle()) > 0.015;
@@ -1179,6 +1189,10 @@ class DesktopPetRendererApp {
 
     window.petAPI?.onActiveWindowChanged?.((windowInfo: ActiveWindowInfo | null) => {
       this.petActor.setActiveWindow(windowInfo);
+      if (this.petActor.getIsPerchingOnWindow()) {
+        this.renderFrame();
+        this.updateFloatingPanelsPosition();
+      }
     });
 
     window.petAPI?.onMusicStateChanged?.((isPlaying: boolean) => {
@@ -1189,6 +1203,10 @@ class DesktopPetRendererApp {
       this.hasMainPcActivityHook = true;
       if (batch.activeWindow !== undefined) {
         this.petActor.setActiveWindow(batch.activeWindow);
+        if (this.petActor.getIsPerchingOnWindow()) {
+          this.renderFrame();
+          this.updateFloatingPanelsPosition();
+        }
       }
       if (batch.isMusicPlaying !== undefined && batch.isMusicPlaying !== this.isMusicMode) {
         this.toggleMusicMode(batch.isMusicPlaying);
@@ -2908,9 +2926,14 @@ class DesktopPetRendererApp {
     if (!this.petActor) {
       return;
     }
-    const petHalf = this.petActor.getDrawSize() / 2;
-
     const isHudOpen = Boolean(this.hudEl && !this.hudEl.classList.contains('hidden'));
+    const isSpeechVisible = Boolean(this.speechBubbleEl && !this.speechBubbleEl.classList.contains('hidden'));
+
+    if (!isHudOpen && !isSpeechVisible) {
+      return;
+    }
+
+    const petHalf = this.petActor.getDrawSize() / 2;
     let hudLeft = 0;
     let hudTop = 0;
     let hudWidth = 332;
@@ -2936,12 +2959,12 @@ class DesktopPetRendererApp {
       this.hudEl.style.top = `${hudTop}px`;
     }
 
-    if (this.speechBubbleEl && !this.speechBubbleEl.classList.contains('hidden')) {
+    if (isSpeechVisible && this.speechBubbleEl) {
       let bubbleX = Math.min(
         window.innerWidth - 120,
         Math.max(120, Math.round(this.petActor.x))
       );
-      let bubbleY = Math.round(this.petActor.y - petHalf - 46);
+      let bubbleY = 0;
       let isFlipped = false;
 
       // Si le menu HUD est ouvert, on décale impérativement la bulle pour qu'elle reste toujours visible et au premier plan
@@ -2957,12 +2980,25 @@ class DesktopPetRendererApp {
           // Si le menu touche le haut de l'écran, on place la bulle sous le familier
           bubbleY = Math.min(
             window.innerHeight - 34,
-            Math.round(this.petActor.y + petHalf + 34)
+            Math.round(this.petActor.y + petHalf + 24)
           );
           isFlipped = true;
         }
       } else {
-        bubbleY = Math.max(44, bubbleY);
+        // Menu HUD fermé :
+        // Si le familier est perché sur une fenêtre ou se trouve près du haut de l'écran,
+        // l'espace au-dessus est trop restreint et masquerait le familier.
+        // On place alors intelligemment la bulle EN DESSOUS du familier !
+        if (this.petActor.y - petHalf < 68) {
+          bubbleY = Math.min(
+            window.innerHeight - 34,
+            Math.round(this.petActor.y + petHalf + 22)
+          );
+          isFlipped = true;
+        } else {
+          bubbleY = Math.max(44, Math.round(this.petActor.y - petHalf - 14));
+          isFlipped = false;
+        }
       }
 
       if (isFlipped) {

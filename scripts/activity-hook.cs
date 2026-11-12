@@ -248,8 +248,8 @@ class Program {
             keyHookId = SetWindowsHookEx(WH_KEYBOARD_LL, keyProc, moduleHandle, 0);
         }
 
-        // 1. Suivi haute fréquence de la géométrie de la fenêtre active (~33 Hz, toutes les 30 ms)
-        // Permet au familier de suivre de façon ultra fluide le déplacement de la fenêtre en temps réel.
+        // 1. Suivi haute fréquence de la géométrie de la fenêtre active (~66 Hz, toutes les 15 ms)
+        // Permet au familier de suivre de façon ultra fluide le déplacement de la fenêtre en temps réel sans latence.
         Timer windowTimer = new Timer((e) => {
             string wJson = GetForegroundWindowJson();
             if (wJson != "null" && wJson != lastWindowJson) {
@@ -258,7 +258,7 @@ class Program {
                 Console.WriteLine("{\"window\":" + wJson + "}");
                 Console.Out.Flush();
             }
-        }, null, 30, 30);
+        }, null, 15, 15);
 
         // 2. Échantillonnage d'activité et musique toutes les 500 ms
         Timer reportTimer = new Timer((e) => {

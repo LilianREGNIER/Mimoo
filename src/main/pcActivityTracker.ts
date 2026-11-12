@@ -151,10 +151,10 @@ export class PcActivityTracker {
                 (prev !== null &&
                   newWin !== null &&
                   (prev.title !== newWin.title ||
-                    Math.abs(prev.x - newWin.x) > 4 ||
-                    Math.abs(prev.y - newWin.y) > 4 ||
-                    Math.abs(prev.width - newWin.width) > 4 ||
-                    Math.abs(prev.height - newWin.height) > 4));
+                    prev.x !== newWin.x ||
+                    prev.y !== newWin.y ||
+                    prev.width !== newWin.width ||
+                    prev.height !== newWin.height));
 
               if (hasChanged) {
                 this.currentActiveWindow = newWin;

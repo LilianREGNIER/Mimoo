@@ -181,6 +181,10 @@ export class PetActor {
     return this.isPerchingOnWindow;
   }
 
+  public getIsJumpingToWindow(): boolean {
+    return this.isJumpingToWindow;
+  }
+
   public getIsCarryingBall(): boolean {
     return this.isCarryingBall;
   }
@@ -198,25 +202,47 @@ export class PetActor {
   }
 
   /**
-   * Fait bondir le familier sur le bord supérieur de la fenêtre active.
+   * Fait bondir le familier sur le bord supérieur de la fenêtre active via une trajectoire parabolique cinématique fluide.
    */
   public jumpToWindow(win: ActiveWindowInfo): void {
     if (!this.isValidPerchWindow(win)) return;
     const targetY = this.getPerchY(win);
-    const deltaY = Math.max(15, this.y - targetY);
-
-    // Calcul de l'impulsion verticale pour atteindre exactement le haut de la fenêtre
-    this.vy = -Math.sqrt(2 * 880 * (deltaY + 28));
-    this.targetPerchY = targetY;
-    this.isJumpingToWindow = true;
-    this.isPerchingOnWindow = true;
-    this.perchDurationTimer = 16 + Math.random() * 14;
 
     const minX = Math.max(30, win.x + 35);
     const maxX = Math.min(window.innerWidth - 30, win.x + win.width - 35);
     const targetWinX = minX < maxX ? minX + Math.random() * (maxX - minX) : win.x + win.width / 2;
-    this.targetX = this.clampX(targetWinX);
-    this.perchOffsetX = Math.max(35, Math.min(win.width - 35, this.targetX - win.x));
+    const targetX = this.clampX(targetWinX);
+    this.perchOffsetX = Math.max(35, Math.min(win.width - 35, targetX - win.x));
+
+    const startX = this.x;
+    const startY = this.y;
+    const deltaY = startY - targetY;
+    const gravity = 980;
+
+    // Hauteur d'apex au-dessus du point le plus haut de la trajectoire
+    const hopApex = Math.max(45, Math.min(160, Math.max(0, deltaY) * 0.18 + 45));
+    const apexY = Math.min(startY, targetY) - hopApex;
+
+    // Vitesse verticale initiale pour atteindre apexY
+    const initialVy = -Math.sqrt(2 * gravity * Math.max(12, startY - apexY));
+
+    // Durée de montée et de descente
+    const tUp = Math.abs(initialVy) / gravity;
+    const tDown = Math.sqrt((2 * Math.max(12, targetY - apexY)) / gravity);
+    const totalDuration = Math.max(0.3, tUp + tDown);
+
+    // Vitesse horizontale constante synchronisée sur la durée exacte du saut
+    const initialVx = (targetX - startX) / totalDuration;
+
+    this.vx = initialVx;
+    this.vy = initialVy;
+    this.targetPerchY = targetY;
+    this.targetX = targetX;
+    this.isJumpingToWindow = true;
+    this.isPerchingOnWindow = false;
+    this.isAirborne = false;
+    this.flipX = this.vx < 0;
+    this.perchDurationTimer = 16 + Math.random() * 14;
     this.callbacks.onWindowPerchJump?.(win.title);
   }
 
@@ -435,7 +461,7 @@ export class PetActor {
 
         // Historique temporel pour vitesse de lancer (Throw / Fling)
         this.dragHistory.push({ x: clientX, y: clientY, time: now });
-        if (this.dragHistory.length > 8) {
+        if (this.dragHistory.length > 16) {
           this.dragHistory.shift();
         }
 
@@ -585,35 +611,45 @@ export class PetActor {
     if (wasDragged) {
       let throwVx = 0;
       let throwVy = 0;
-      if (this.dragHistory.length >= 2) {
-        const first = this.dragHistory[0];
-        const last = this.dragHistory[this.dragHistory.length - 1];
-        const dtSec = Math.max(0.016, (last.time - first.time) / 1000);
-        if (performance.now() - last.time < 160) {
+      const now = performance.now();
+      // On prend les points récents des dernières 85 ms pour capter fidèlement le coup de poignet (flick) de relâchement
+      const recentPoints = this.dragHistory.filter((p) => now - p.time <= 85);
+      const pointsToUse = recentPoints.length >= 2 ? recentPoints : this.dragHistory;
+
+      if (pointsToUse.length >= 2) {
+        const first = pointsToUse[0];
+        const last = pointsToUse[pointsToUse.length - 1];
+        const dtSec = Math.max(0.012, (last.time - first.time) / 1000);
+        if (now - last.time < 160) {
           throwVx = (last.x - first.x) / dtSec;
           throwVy = (last.y - first.y) / dtSec;
         }
       }
       this.dragHistory = [];
 
+      // Multiplicateur dynamique pour amplifier la sensation de lancer (throw fling power)
+      const FLING_BOOST = 1.45;
+      throwVx *= FLING_BOOST;
+      throwVy *= FLING_BOOST;
+
       const throwSpeed = Math.hypot(throwVx, throwVy);
       let dropType: 'shake' | 'fast' | 'gentle' = 'gentle';
       if (shakeCount >= 4) {
         dropType = 'shake';
-      } else if (throwSpeed > 450 || maxSpeed > 18) {
+      } else if (throwSpeed > 420 || maxSpeed > 16) {
         dropType = 'fast';
       } else {
         dropType = 'gentle';
       }
       this.pendingDropType = dropType;
 
-      const isThrownOrHigh = throwSpeed > 120 || this.y < floorY - 14;
+      const isThrownOrHigh = throwSpeed > 75 || this.y < floorY - 10;
       if (isThrownOrHigh) {
         // ENTRÉE EN VOL BALISTIQUE SOUS GRAVITÉ (Lancé / Jeté) !
         this.isAirborne = true;
-        this.vx = Math.max(-1400, Math.min(1400, throwVx * 0.95));
-        this.vy = Math.max(-1300, Math.min(1100, throwVy * 0.95));
-        if (Math.abs(this.vx) > 30) {
+        this.vx = Math.max(-1850, Math.min(1850, throwVx));
+        this.vy = Math.max(-1750, Math.min(1500, throwVy));
+        if (Math.abs(this.vx) > 25) {
           this.flipX = this.vx < 0;
         }
       } else {
@@ -744,25 +780,46 @@ export class PetActor {
       return;
     }
 
-    // 1) Saut en arc balistique vers le perchoir de la fenêtre active
+    // 1) Saut en arc parabolique cinématique fluide vers le perchoir de la fenêtre active
     if (this.isJumpingToWindow) {
-      this.vy += 880 * safeDt;
+      const gravity = 980;
+      this.vy += gravity * safeDt;
+      this.x += this.vx * safeDt;
       this.y += this.vy * safeDt;
 
-      if (this.targetX !== null) {
-        const diffX = this.targetX - this.x;
-        const absDiff = Math.abs(diffX);
-        if (absDiff > 2) {
-          const dir = Math.sign(diffX);
-          this.flipX = dir < 0;
-          this.x = this.clampX(this.x + dir * Math.min(absDiff, this.walkSpeed * 2.2 * safeDt));
-        }
+      // Orientation fluide selon la direction horizontale
+      if (Math.abs(this.vx) > 10) {
+        this.flipX = this.vx < 0;
       }
 
-      if ((this.vy >= 0 && this.y >= this.targetPerchY) || this.y <= this.targetPerchY - 8) {
+      // Squash and stretch dynamique pendant le saut
+      const jumpSpeed = Math.hypot(this.vx, this.vy);
+      const targetStretchY = 1.0 + Math.min(0.28, jumpSpeed * 0.00025);
+      const targetStretchX = Math.max(0.72, 1.0 / targetStretchY);
+      this.dragStretchY += (targetStretchY - this.dragStretchY) * Math.min(1, 14 * safeDt);
+      this.dragStretchX += (targetStretchX - this.dragStretchX) * Math.min(1, 14 * safeDt);
+
+      // Si la fenêtre bouge pendant le saut, on maintient la hauteur du perchoir à jour
+      if (this.activeWindow && this.isValidPerchWindow(this.activeWindow)) {
+        this.targetPerchY = this.getPerchY(this.activeWindow);
+      }
+
+      // Atterrissage fluide dès que la descente atteint ou dépasse le haut de la fenêtre
+      if (this.vy >= 0 && this.y >= this.targetPerchY) {
         this.y = this.targetPerchY;
+        if (this.activeWindow && this.isValidPerchWindow(this.activeWindow)) {
+          this.x = this.clampX(this.activeWindow.x + this.perchOffsetX);
+        } else if (this.targetX !== null) {
+          this.x = this.targetX;
+        }
+        this.vx = 0;
         this.vy = 0;
         this.isJumpingToWindow = false;
+        this.isPerchingOnWindow = true;
+        this.targetX = null;
+        this.dragStretchY = 0.78;
+        this.dragStretchX = 1.22;
+        this.callbacks.onPositionChanged(this.x, this.y);
         this.callbacks.onWindowPerchLand?.(this.activeWindow?.title ?? '');
       }
       return;
