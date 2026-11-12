@@ -7,6 +7,7 @@
 import {
   applyMiniGameResult,
   buyCosmeticItem,
+  buyFoodItem,
   cleanPet,
   clickEgg,
   decodeFriendPassport,
@@ -696,6 +697,59 @@ export class PetEngine {
     }
 
     const result = buyCosmeticItem(this.saveData.pet, item);
+    if (!result.purchased) {
+      return {
+        pet: this.getState(),
+        purchased: false,
+        reason: result.reason,
+      };
+    }
+
+    this.saveData.pet = result.pet;
+    if (typeof nowMs === 'number' && Number.isFinite(nowMs)) {
+      this.saveData.pet.lastUpdatedAt = nowMs;
+      this.saveData.savedAt = nowMs;
+    }
+
+    return {
+      pet: this.getState(),
+      purchased: true,
+    };
+  }
+
+  /**
+   * Retourne l'inventaire des aliments possédés { [foodId]: quantity }.
+   */
+  public getFoodInventory(): Record<string, number> {
+    return { ...(this.saveData.pet.foodInventory ?? {}) };
+  }
+
+  /**
+   * Achète des portions de nourriture en boutique avec les pièces TamaCoins.
+   */
+  public buyFood(
+    foodOrId: string | FoodItem,
+    quantity = 1,
+    nowMs?: number
+  ): {
+    pet: PetState;
+    purchased: boolean;
+    reason?: 'insufficient_coins' | 'unknown_food' | 'invalid_quantity';
+  } {
+    const food =
+      typeof foodOrId === 'string'
+        ? this.foods.find((f) => f.id === foodOrId)
+        : foodOrId;
+
+    if (!food) {
+      return {
+        pet: this.getState(),
+        purchased: false,
+        reason: 'unknown_food',
+      };
+    }
+
+    const result = buyFoodItem(this.saveData.pet, food, quantity);
     if (!result.purchased) {
       return {
         pet: this.getState(),

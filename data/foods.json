@@ -5,6 +5,7 @@
     "icon": "🍎",
     "description": "Un fruit frais et équilibré qui rassasie sans salir.",
     "category": "healthy",
+    "price": 5,
     "effects": {
       "hunger": 22,
       "happiness": 6,
@@ -19,6 +20,7 @@
     "icon": "🫐",
     "description": "Une baie pétillante riche en vitamines qui redonne du tonus.",
     "category": "energizing",
+    "price": 8,
     "effects": {
       "hunger": 14,
       "energy": 20,
@@ -32,6 +34,7 @@
     "icon": "🍯",
     "description": "Une friandise sucrée très appréciée, mais un peu collante.",
     "category": "snack",
+    "price": 12,
     "effects": {
       "hunger": 18,
       "happiness": 22,
@@ -46,6 +49,7 @@
     "icon": "🍣",
     "description": "Un mets raffiné préparé avec soin pour les palais exigeants.",
     "category": "gourmet",
+    "price": 25,
     "effects": {
       "hunger": 32,
       "happiness": 18,
@@ -59,6 +63,7 @@
     "icon": "🍵",
     "description": "Une soupe apaisante et purifiante qui réconforte le familier.",
     "category": "healthy",
+    "price": 15,
     "effects": {
       "hunger": 20,
       "energy": 12,

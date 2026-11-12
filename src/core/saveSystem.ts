@@ -189,6 +189,13 @@ export function createInitialPetState(name?: string, nowMs?: number): PetState {
       accessory: null,
       aura: null,
     },
+    foodInventory: {
+      apple_fresh: 3,
+      energy_berry: 2,
+      honey_cake: 2,
+      herbal_soup: 2,
+      royal_sushi: 1,
+    },
     pomodoro: {
       isActive: false,
       mode: 'idle',
@@ -570,6 +577,21 @@ export function validateAndMigrateSaveData(
 
   const pomodoro = sanitizePomodoroState(rawPet.pomodoro);
 
+  const rawInventory = isPlainObject(rawPet.foodInventory) ? rawPet.foodInventory : {};
+  const foodInventory: Record<string, number> = {};
+  for (const [key, val] of Object.entries(rawInventory)) {
+    if (typeof key === 'string' && typeof val === 'number' && Number.isFinite(val) && val >= 0) {
+      foodInventory[key] = Math.floor(val);
+    }
+  }
+  if (Object.keys(foodInventory).length === 0) {
+    foodInventory.apple_fresh = 3;
+    foodInventory.energy_berry = 2;
+    foodInventory.honey_cake = 2;
+    foodInventory.herbal_soup = 2;
+    foodInventory.royal_sushi = 1;
+  }
+
   const defaultSettings = createDefaultSettings();
   const rawSettings = isPlainObject(raw.settings) ? raw.settings : {};
 
@@ -638,6 +660,7 @@ export function validateAndMigrateSaveData(
       tamaCoins,
       ownedCosmetics,
       equippedCosmetics,
+      foodInventory,
       pomodoro,
     },
     settings,

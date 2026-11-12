@@ -4,6 +4,7 @@ import foodsJson from '../../data/foods.json';
 import speciesJson from '../../data/species.json';
 import {
   applyMiniGameResult,
+  buyFoodItem,
   cleanPet,
   clickEgg,
   feedPet,
@@ -475,6 +476,72 @@ describe('Système de besoins (needsSystem), actions (actionsSystem) et Sandbox 
       expect(pet.careStats.foodCategoryCounts.energizing).toBe(1);
       expect(pet.careStats.foodCategoryCounts.snack).toBe(1);
       expect(pet.careStats.foodCategoryCounts.gourmet).toBe(1);
+    });
+
+    it('gère l’achat de nourriture (buyFoodItem), les stocks et le refus lorsque le stock est épuisé', () => {
+      const apple = foods.find((f) => f.id === 'apple_fresh')!;
+      let pet: PetState = {
+        ...createBabyPet(10_000),
+        tamaCoins: 20,
+        foodInventory: {
+          apple_fresh: 0,
+        },
+      };
+
+      // 1. Refus de nourrir si stock = 0
+      const failedFeed = feedPet(pet, apple);
+      expect(failedFeed.accepted).toBe(false);
+      expect(failedFeed.reason).toBe('no_stock');
+
+      // 2. Achat de 2 pommes pour 10 coins (5 coins par pomme)
+      const buyResult = buyFoodItem(pet, apple, 2);
+      expect(buyResult.purchased).toBe(true);
+      expect(buyResult.pet.tamaCoins).toBe(10);
+      expect(buyResult.pet.foodInventory?.apple_fresh).toBe(2);
+
+      // 3. Consommation de la première pomme -> stock passe à 1
+      const hungryPet = { ...buyResult.pet, needs: { ...buyResult.pet.needs, hunger: 30 } };
+      const firstFeed = feedPet(hungryPet, apple);
+      expect(firstFeed.accepted).toBe(true);
+      expect(firstFeed.pet.foodInventory?.apple_fresh).toBe(1);
+
+      // 4. Consommation de la seconde pomme -> stock passe à 0
+      const hungryPet2 = { ...firstFeed.pet, needs: { ...firstFeed.pet.needs, hunger: 30 } };
+      const secondFeed = feedPet(hungryPet2, apple);
+      expect(secondFeed.accepted).toBe(true);
+      expect(secondFeed.pet.foodInventory?.apple_fresh).toBe(0);
+
+      // 5. Troisième tentative -> rejet pour stock épuisé
+      const hungryPet3 = { ...secondFeed.pet, needs: { ...secondFeed.pet.needs, hunger: 30 } };
+      const thirdFeed = feedPet(hungryPet3, apple);
+      expect(thirdFeed.accepted).toBe(false);
+      expect(thirdFeed.reason).toBe('no_stock');
+
+      // 6. Refus d'achat si pièces insuffisantes (2 pommes = 10 coins, or solde restant = 0)
+      const poorPet: PetState = { ...secondFeed.pet, tamaCoins: 3 };
+      const poorBuy = buyFoodItem(poorPet, apple, 1);
+      expect(poorBuy.purchased).toBe(false);
+      expect(poorBuy.reason).toBe('insufficient_coins');
+    });
+
+    it('permet l’achat et la consultation d’inventaire via PetEngine', () => {
+      const engine = new PetEngine(
+        createInitialSaveData('TestEngine'),
+        gameConfig,
+        foods,
+        species
+      );
+
+      // Vérifie l'inventaire initial
+      const initialInv = engine.getFoodInventory();
+      expect(initialInv.apple_fresh).toBeGreaterThan(0);
+
+      // Achat via l'engine
+      const coinsBefore = engine.getState().tamaCoins;
+      const buyRes = engine.buyFood('apple_fresh', 2);
+      expect(buyRes.purchased).toBe(true);
+      expect(buyRes.pet.tamaCoins).toBe(coinsBefore - 10);
+      expect(engine.getFoodInventory().apple_fresh).toBe(initialInv.apple_fresh + 2);
     });
   });
 

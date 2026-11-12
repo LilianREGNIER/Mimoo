@@ -4,7 +4,7 @@
  * le roulement et la rotation de la balle sur le Canvas.
  */
 
-export type BallState = 'idle' | 'flying' | 'rolling' | 'stopped' | 'carried' | 'returned';
+export type BallState = 'idle' | 'ready' | 'dragging' | 'flying' | 'rolling' | 'stopped' | 'carried' | 'returned';
 
 export class BallEntity {
   public x = 0;
@@ -16,6 +16,40 @@ export class BallEntity {
   public rotation = 0;
   public active = false;
   private trail: { x: number; y: number; alpha: number }[] = [];
+
+  /**
+   * Place la balle sur le terrain en position d'attente, prête à être attrapée et lancée par le joueur.
+   */
+  public spawn(startX: number, startY: number): void {
+    this.x = startX;
+    this.y = startY;
+    this.vx = 0;
+    this.vy = 0;
+    this.active = true;
+    this.state = 'ready';
+    this.trail = [];
+  }
+
+  /**
+   * Projette la balle avec une vélocité physique calculée lors du relâchement (flick / throw).
+   */
+  public throw(vx: number, vy: number): void {
+    this.active = true;
+    this.state = 'flying';
+    this.vx = Math.max(-1800, Math.min(1800, vx));
+    this.vy = Math.max(-1600, Math.min(1400, vy));
+    this.trail = [];
+  }
+
+  /**
+   * Teste si un point du curseur survole la balle.
+   */
+  public isPointInside(px: number, py: number, padding = 16): boolean {
+    if (!this.active || this.state === 'idle' || this.state === 'carried' || this.state === 'returned') {
+      return false;
+    }
+    return Math.hypot(px - this.x, py - this.y) <= this.radius + padding;
+  }
 
   /**
    * Lance la balle depuis `(startX, startY)` vers `(targetX, targetY)` avec un arc balistique.
@@ -55,7 +89,14 @@ export class BallEntity {
    * Met à jour la physique (gravité, friction, rebonds sur le sol et les parois latérales).
    */
   public update(dtSeconds: number, groundY: number, screenWidth: number): void {
-    if (!this.active || this.state === 'idle' || this.state === 'carried' || this.state === 'returned') {
+    if (
+      !this.active ||
+      this.state === 'idle' ||
+      this.state === 'ready' ||
+      this.state === 'dragging' ||
+      this.state === 'carried' ||
+      this.state === 'returned'
+    ) {
       return;
     }
 
@@ -151,6 +192,17 @@ export class BallEntity {
     ctx.beginPath();
     ctx.arc(-2.5, 0, this.radius * 0.7, -Math.PI / 2, Math.PI / 2);
     ctx.stroke();
+
+    // Halo d'interaction si prête à être lancée ou tenue en main
+    if (this.state === 'ready' || this.state === 'dragging' || this.state === 'stopped') {
+      ctx.strokeStyle = this.state === 'dragging' ? 'rgba(250, 204, 21, 0.9)' : 'rgba(190, 242, 100, 0.65)';
+      ctx.lineWidth = 1.6;
+      ctx.setLineDash([3, 3]);
+      ctx.beginPath();
+      ctx.arc(0, 0, this.radius + 4.5, 0, Math.PI * 2);
+      ctx.stroke();
+      ctx.setLineDash([]);
+    }
 
     ctx.restore();
   }

@@ -498,6 +498,27 @@ body.sponge-mode #pet-canvas {
   text-overflow: ellipsis;
 }
 
+.food-count-badge {
+  font-size: 10px;
+  font-weight: 700;
+  padding: 1px 6px;
+  border-radius: 999px;
+  background: rgba(34, 197, 94, 0.22);
+  color: #86efac;
+  border: 1px solid rgba(34, 197, 94, 0.4);
+}
+
+.food-count-badge.zero {
+  background: rgba(239, 68, 68, 0.18);
+  color: #fca5a5;
+  border-color: rgba(239, 68, 68, 0.35);
+}
+
+.food-item-btn.out-of-stock {
+  opacity: 0.78;
+  border-style: dashed;
+}
+
 /* Choix des 2 mini-jeux */
 .games-choice-grid {
   display: flex;

@@ -135,6 +135,8 @@ class DesktopPetRendererApp {
   // Mode Balle & Mode Musique
   private readonly ballEntity = new BallEntity();
   private isBallThrowMode = false;
+  private isDraggingBall = false;
+  private ballDragHistory: { x: number; y: number; time: number }[] = [];
   private isMusicMode = false;
 
   // Mode Focus & Pomodoro
@@ -321,10 +323,10 @@ class DesktopPetRendererApp {
         const dist = Math.hypot(cx - this.onlineManager.friendX, cy - this.onlineManager.friendY);
         return dist < 45;
       },
-      isBallThrowModeActive: () => this.isBallThrowMode,
+      isBallThrowModeActive: () => this.isBallThrowMode || this.isDraggingBall,
       isPointOverBall: (cx, cy) => {
-        if (!this.ballEntity.active || this.ballEntity.state !== 'stopped') return false;
-        return Math.hypot(cx - this.ballEntity.x, cy - this.ballEntity.y) < 22;
+        if (!this.ballEntity.active) return false;
+        return this.ballEntity.isPointInside(cx, cy, 22);
       },
     });
 
@@ -458,6 +460,7 @@ class DesktopPetRendererApp {
       isPhysicsActive ||
       this.isSpongeMode ||
       this.isBallThrowMode ||
+      this.isDraggingBall ||
       this.ballEntity.active ||
       this.isMusicMode ||
       (this.engine.getPomodoroState()?.isActive ?? false) ||
@@ -783,6 +786,18 @@ class DesktopPetRendererApp {
       this.hitTester.evaluateAt(e.clientX, e.clientY);
       this.petActor.handlePointerMove(e.clientX, e.clientY);
 
+      // Déplacement de la balle à la souris (simulation de vrai lancer physique)
+      if (this.isDraggingBall) {
+        this.ballEntity.x = e.clientX;
+        this.ballEntity.y = e.clientY;
+        const now = performance.now();
+        this.ballDragHistory.push({ x: e.clientX, y: e.clientY, time: now });
+        if (this.ballDragHistory.length > 25) {
+          this.ballDragHistory.shift();
+        }
+        this.renderFrame();
+      }
+
       // Suivi direct à 0 ms de latence lorsque l'utilisateur déplace la fenêtre active à la souris
       if (this.petActor.getIsPerchingOnWindow()) {
         const win = this.petActor.getActiveWindow();
@@ -844,18 +859,35 @@ class DesktopPetRendererApp {
     });
 
     this.canvas.addEventListener('mousedown', (e) => {
-      // 1) Si le mode Lancer de balle est actif, ce clic projette la balle vers les coordonnées du curseur
+      // 1) Si on clique sur la balle (en mode lancer ou au sol), saisie pour un vrai lancer physique au geste
+      if (
+        e.button === 0 &&
+        this.ballEntity.active &&
+        (this.isBallThrowMode || this.ballEntity.state === 'stopped' || this.ballEntity.state === 'ready') &&
+        this.ballEntity.isPointInside(e.clientX, e.clientY, 26)
+      ) {
+        this.isDraggingBall = true;
+        this.ballEntity.state = 'dragging';
+        this.ballEntity.x = e.clientX;
+        this.ballEntity.y = e.clientY;
+        this.ballDragHistory = [{ x: e.clientX, y: e.clientY, time: performance.now() }];
+        this.renderFrame();
+        return;
+      }
+
+      // Si le mode Lancer de balle est actif et qu'on clique à distance, lancement balistique vers la cible
       if (this.isBallThrowMode) {
-        const startX = this.petActor.x;
-        const startY = this.petActor.y - 30;
+        const startX = this.ballEntity.active ? this.ballEntity.x : this.petActor.x;
+        const startY = this.ballEntity.active ? this.ballEntity.y : this.petActor.y - 25;
         this.ballEntity.launch(startX, startY, e.clientX, e.clientY);
         this.petActor.startFetchingBall(e.clientX, e.clientY);
         this.isBallThrowMode = false;
         this.ballModeBannerEl?.classList.add('hidden');
         this.hitTester.refresh();
-        this.showSpeechBubble("Attrape ! 🎾 Va chercher !", 2200);
+        this.showSpeechBubble("Attrape ! 🎾 Va chercher !", 2400);
         return;
       }
+
       if (this.miniGames.handleCanvasMouseDown(e.clientX, e.clientY)) {
         return;
       }
@@ -871,6 +903,42 @@ class DesktopPetRendererApp {
     });
 
     window.addEventListener('mouseup', () => {
+      if (this.isDraggingBall) {
+        this.isDraggingBall = false;
+        const now = performance.now();
+        const recent = this.ballDragHistory.filter((p) => now - p.time <= 85);
+        const points = recent.length >= 2 ? recent : this.ballDragHistory;
+        let vx = 0;
+        let vy = 0;
+        if (points.length >= 2) {
+          const first = points[0];
+          const last = points[points.length - 1];
+          const dt = Math.max(0.012, (last.time - first.time) / 1000);
+          if (now - last.time < 180) {
+            vx = (last.x - first.x) / dt;
+            vy = (last.y - first.y) / dt;
+          }
+        }
+        this.ballDragHistory = [];
+
+        // Impulsion de projection (fling power)
+        const FLING_BOOST = 1.35;
+        vx *= FLING_BOOST;
+        vy *= FLING_BOOST;
+
+        const speed = Math.hypot(vx, vy);
+        if (speed < 60) {
+          this.ballEntity.throw(vx * 0.4, 45);
+        } else {
+          this.ballEntity.throw(vx, vy);
+        }
+
+        this.isBallThrowMode = false;
+        this.ballModeBannerEl?.classList.add('hidden');
+        this.petActor.startFetchingBall(this.ballEntity.x, this.ballEntity.y);
+        this.showSpeechBubble("Attrape ! 🎾 Va chercher !", 2400);
+        this.hitTester.refresh();
+      }
       this.petActor.handlePointerUp();
     });
 
@@ -1493,7 +1561,9 @@ class DesktopPetRendererApp {
   private handleFeedFood(food: FoodItem): void {
     const result = this.engine.feed(food.id, Date.now());
     if (!result.accepted) {
-      if (result.reason === 'egg_cannot_eat' || result.reason === 'stage_egg') {
+      if (result.reason === 'no_stock') {
+        this.showSpeechBubble(`Plus de ${food.name} ! Achète-en à la Boutique 🛍️`, 3200);
+      } else if (result.reason === 'egg_cannot_eat' || result.reason === 'stage_egg') {
         this.showSpeechBubble("Un œuf n'a pas encore de bouche ! Cliquez dessus pour l'éclore 🥚");
       } else if (result.reason === 'sleeping' || result.reason === 'pet_sleeping') {
         this.showSpeechBubble('Il dort profondément... Réveille-le pour manger 💤');
@@ -1512,6 +1582,7 @@ class DesktopPetRendererApp {
       this.handleEvolutionTriggered(result.newForm);
     }
 
+    this.renderFoodsDrawerList();
     this.refreshAllPanelsUI();
     void this.persistSaveState();
   }
@@ -1722,16 +1793,29 @@ class DesktopPetRendererApp {
     this.animator.spawnParticles('star', this.petActor.x, this.petActor.y, 6);
     this.animator.spawnParticles('heart', this.petActor.x, this.petActor.y, 4);
 
+    if (result.gameId === 'star_catch' && result.score > 0) {
+      // 2 pièces par étoile attrapée !
+      const bonusCoins = result.score * 2;
+      this.engine.addCoins(bonusCoins);
+      this.animator.spawnParticles('sparkle', this.petActor.x, this.petActor.y - 15, 6);
+    }
+
     if (outcome.evolved && outcome.newForm) {
       this.handleEvolutionTriggered(outcome.newForm);
+    } else if (result.gameId === 'star_catch') {
+      const bonusCoins = result.score * 2;
+      this.showSpeechBubble(
+        `⭐ ${result.score} étoiles attrapées en 10s ! +${Math.round(outcome.happinessGain)} 💖 (+${bonusCoins} 🪙)`,
+        4000
+      );
     } else if (result.won) {
       this.showSpeechBubble(
-        `Victoire (${result.score}/${result.maxScore}) ! +${Math.round(outcome.happinessGain)} 💖`,
+        `Victoire (${result.score}/${result.maxScore}) ! +${Math.round(outcome.happinessGain)} 💖 (+20 🪙)`,
         3800
       );
     } else {
       this.showSpeechBubble(
-        `Bien joué (${result.score}/${result.maxScore}) ! +${Math.round(outcome.happinessGain)} 💖`,
+        `Bien joué (${result.score}/${result.maxScore}) ! +${Math.round(outcome.happinessGain)} 💖 (+8 🪙)`,
         3500
       );
     }
@@ -2012,11 +2096,15 @@ class DesktopPetRendererApp {
       return;
     }
     listEl.innerHTML = '';
+    const inv = this.engine.getFoodInventory();
 
     for (const food of this.engine.getFoods()) {
+      const count = inv[food.id] ?? 0;
+      const isOutOfStock = count <= 0;
+
       const btn = document.createElement('button');
       btn.type = 'button';
-      btn.className = 'food-item-btn';
+      btn.className = `food-item-btn ${isOutOfStock ? 'out-of-stock' : ''}`;
 
       const effectsParts: string[] = [];
       if (food.effects.hunger) {
@@ -2033,19 +2121,32 @@ class DesktopPetRendererApp {
         effectsParts.push(`${sign}${food.effects.cleanliness}✨`);
       }
 
+      const countBadge = isOutOfStock
+        ? `<span class="food-count-badge zero">0 (🪙${food.price ?? 5})</span>`
+        : `<span class="food-count-badge">x${count}</span>`;
+
       btn.innerHTML = `
         <span class="food-emoji">${food.icon}</span>
         <div class="food-details">
           <div class="food-title-row">
             <span class="food-name">${food.name}</span>
-            <span class="food-effects">${effectsParts.join(' ')}</span>
+            ${countBadge}
           </div>
+          <div class="food-effects">${effectsParts.join(' ')}</div>
           <div class="food-desc">${food.description}</div>
         </div>
       `;
 
       btn.addEventListener('click', () => {
-        this.handleFeedFood(food);
+        if (isOutOfStock) {
+          this.showSpeechBubble(`Plus de ${food.name} ! Ouverture de la Boutique pour en acheter 🛍️`, 3200);
+          this.openShopModal();
+          this.switchShopTab('market');
+          const foodCatBtn = document.querySelector<HTMLButtonElement>('.shop-filter-btn[data-category="food"]');
+          foodCatBtn?.click();
+        } else {
+          this.handleFeedFood(food);
+        }
       });
 
       listEl.appendChild(btn);
@@ -2223,12 +2324,22 @@ class DesktopPetRendererApp {
     }
     this.closeAllPanels();
     this.isBallThrowMode = true;
+    this.isDraggingBall = false;
+    this.ballDragHistory = [];
     this.ballModeBannerEl?.classList.remove('hidden');
+
+    const spawnX = Math.max(70, Math.min(window.innerWidth - 70, this.petActor.x + (this.petActor.flipX ? -75 : 75)));
+    const spawnY = this.petActor.getGroundY() + 10;
+    this.ballEntity.spawn(spawnX, spawnY);
+    this.showSpeechBubble("Attrape la balle à la souris et lance-la avec élan ! 🎾", 3200);
     this.hitTester.refresh();
   }
 
   private cancelBallThrowMode(): void {
     this.isBallThrowMode = false;
+    this.isDraggingBall = false;
+    this.ballDragHistory = [];
+    this.ballEntity.reset();
     this.ballModeBannerEl?.classList.add('hidden');
     this.hitTester.refresh();
   }
@@ -2477,15 +2588,18 @@ class DesktopPetRendererApp {
       this.hudCoinsCountEl.textContent = String(pet.tamaCoins);
     }
 
+    const foodInv = this.engine.getFoodInventory();
+    const totalFoodCount = Object.values(foodInv).reduce((a, b) => a + b, 0);
+
     const ownedCountEl = document.getElementById('shop-owned-count');
     if (ownedCountEl) {
-      ownedCountEl.textContent = String(pet.ownedCosmetics.length);
+      ownedCountEl.textContent = String(pet.ownedCosmetics.length + totalFoodCount);
     }
 
     // Résumé de l'équipement actuel
     const summaryEl = document.getElementById('shop-equipped-summary');
     if (summaryEl) {
-      summaryEl.classList.toggle('hidden', this.currentShopTab !== 'inventory');
+      summaryEl.classList.toggle('hidden', this.currentShopTab !== 'inventory' || this.currentShopCategory === 'food');
     }
 
     const hatItem = allCosmetics.find((c) => c.id === pet.equippedCosmetics.hat);
@@ -2522,22 +2636,203 @@ class DesktopPetRendererApp {
     if (!this.shopItemsGridEl) return;
     this.shopItemsGridEl.innerHTML = '';
 
-    // Filtrage par onglet (Boutique ou Inventaire) et catégorie
-    let itemsToDisplay = allCosmetics;
-    if (this.currentShopTab === 'inventory') {
-      itemsToDisplay = allCosmetics.filter((item) => pet.ownedCosmetics.includes(item.id));
+    const allFoods = this.engine.getFoods();
+    const isFoodCategory = this.currentShopCategory === 'food';
+    const isAllCategory = this.currentShopCategory === 'all';
+    let totalCardsAdded = 0;
+
+    // 1) Rendu des cartes de nourriture si la catégorie courante est 'food' ou 'all'
+    if (isFoodCategory || isAllCategory) {
+      const foodsToDisplay = this.currentShopTab === 'inventory'
+        ? allFoods.filter((f) => (foodInv[f.id] ?? 0) > 0)
+        : allFoods;
+
+      for (const food of foodsToDisplay) {
+        const count = foodInv[food.id] ?? 0;
+        const card = document.createElement('div');
+        card.className = `shop-item-card food-item-card ${count > 0 ? 'owned' : ''}`;
+
+        const iconDiv = document.createElement('div');
+        iconDiv.className = 'shop-item-icon';
+        iconDiv.textContent = food.icon;
+
+        const nameDiv = document.createElement('div');
+        nameDiv.className = 'shop-item-name';
+        nameDiv.textContent = food.name;
+
+        const descDiv = document.createElement('div');
+        descDiv.className = 'shop-item-desc';
+        const effectsParts: string[] = [];
+        if (food.effects.hunger) effectsParts.push(`+${food.effects.hunger}🍖`);
+        if (food.effects.energy) effectsParts.push(`+${food.effects.energy}⚡`);
+        if (food.effects.happiness) effectsParts.push(`+${food.effects.happiness}💖`);
+        if (food.effects.cleanliness) effectsParts.push(`${food.effects.cleanliness > 0 ? '+' : ''}${food.effects.cleanliness}✨`);
+        descDiv.innerHTML = `${food.description}<div style="margin-top:4px; font-weight:600; color:#a5b4fc;">${effectsParts.join(' ')}</div>`;
+
+        const actionsDiv = document.createElement('div');
+        actionsDiv.className = 'shop-item-actions';
+
+        if (this.currentShopTab === 'inventory') {
+          // Mode Inventaire : bouton pour donner à manger directement
+          const feedBtn = document.createElement('button');
+          feedBtn.type = 'button';
+          feedBtn.className = 'shop-action-btn equip';
+          feedBtn.textContent = `🍖 Donner (x${count})`;
+          feedBtn.addEventListener('click', () => {
+            this.handleFeedFood(food);
+            this.refreshShopUI();
+          });
+          actionsDiv.appendChild(feedBtn);
+        } else {
+          // Mode Boutique : bouton d'achat
+          const price = food.price ?? 5;
+          const buyBtn = document.createElement('button');
+          buyBtn.type = 'button';
+          buyBtn.className = 'shop-action-btn buy';
+          buyBtn.textContent = `🪙 ${price} Acheter (${count > 0 ? `Stock: ${count}` : '0'})`;
+          const canAfford = pet.tamaCoins >= price;
+          if (!canAfford) {
+            buyBtn.disabled = true;
+            buyBtn.title = 'Pas assez de pièces TamaCoins !';
+          }
+          buyBtn.addEventListener('click', () => {
+            const res = this.engine.buyFood(food.id);
+            if (res.purchased) {
+              this.refreshShopUI();
+              this.renderFoodsDrawerList();
+              this.animator.spawnParticles('confetti', this.petActor.x, this.petActor.y, 8);
+              this.showSpeechBubble(`Acheté : 1x ${food.name} ${food.icon} ! 😋`, 2800);
+              void this.persistSaveState();
+            } else {
+              this.showSpeechBubble('Pas assez de pièces TamaCoins ! 🪙');
+            }
+          });
+          actionsDiv.appendChild(buyBtn);
+        }
+
+        card.appendChild(iconDiv);
+        card.appendChild(nameDiv);
+        card.appendChild(descDiv);
+        card.appendChild(actionsDiv);
+
+        this.shopItemsGridEl.appendChild(card);
+        totalCardsAdded++;
+      }
     }
 
-    if (this.currentShopCategory !== 'all') {
-      itemsToDisplay = itemsToDisplay.filter((item) => item.slot === this.currentShopCategory);
+    // 2) Rendu des objets cosmétiques si la catégorie n'est pas strictement 'food'
+    if (!isFoodCategory) {
+      let cosmeticsToDisplay = allCosmetics;
+      if (this.currentShopTab === 'inventory') {
+        cosmeticsToDisplay = allCosmetics.filter((item) => pet.ownedCosmetics.includes(item.id));
+      }
+
+      if (this.currentShopCategory !== 'all') {
+        cosmeticsToDisplay = cosmeticsToDisplay.filter((item) => item.slot === this.currentShopCategory);
+      }
+
+      for (const item of cosmeticsToDisplay) {
+        const isOwned = pet.ownedCosmetics.includes(item.id);
+        const isEquipped = pet.equippedCosmetics[item.slot] === item.id;
+
+        const card = document.createElement('div');
+        card.className = `shop-item-card ${isEquipped ? 'is-equipped' : isOwned ? 'owned' : ''}`;
+
+        const iconDiv = document.createElement('div');
+        iconDiv.className = 'shop-item-icon';
+        iconDiv.textContent = item.icon;
+
+        const nameDiv = document.createElement('div');
+        nameDiv.className = 'shop-item-name';
+        nameDiv.textContent = item.name;
+
+        const descDiv = document.createElement('div');
+        descDiv.className = 'shop-item-desc';
+        descDiv.textContent = item.description;
+
+        const actionsDiv = document.createElement('div');
+        actionsDiv.className = 'shop-item-actions';
+
+        if (this.currentShopTab === 'inventory') {
+          // Mode Inventaire : bouton Équiper / Déséquiper
+          const toggleBtn = document.createElement('button');
+          toggleBtn.type = 'button';
+          toggleBtn.className = `shop-action-btn ${isEquipped ? 'buy' : 'equip'}`;
+          toggleBtn.textContent = isEquipped ? 'Déséquiper' : 'Équiper';
+          toggleBtn.addEventListener('click', () => {
+            if (isEquipped) {
+              this.engine.equipCosmetic(item.slot, null);
+              this.animator.spawnParticles('sparkle', this.petActor.x, this.petActor.y, 4);
+            } else {
+              this.engine.equipCosmetic(item.slot, item.id);
+              this.animator.spawnParticles('star', this.petActor.x, this.petActor.y, 6);
+              this.showSpeechBubble(`Équipé : ${item.name} ${item.icon} ! ✨`, 2800);
+            }
+            this.refreshShopUI();
+            void this.persistSaveState();
+          });
+          actionsDiv.appendChild(toggleBtn);
+        } else {
+          // Mode Boutique : achat
+          if (isOwned) {
+            const ownedBtn = document.createElement('button');
+            ownedBtn.type = 'button';
+            ownedBtn.className = `shop-action-btn ${isEquipped ? 'buy' : 'equip'}`;
+            ownedBtn.textContent = isEquipped ? '✓ Équipé' : '✓ Possédé (Équiper)';
+            ownedBtn.addEventListener('click', () => {
+              if (isEquipped) {
+                this.engine.equipCosmetic(item.slot, null);
+              } else {
+                this.engine.equipCosmetic(item.slot, item.id);
+                this.animator.spawnParticles('star', this.petActor.x, this.petActor.y, 6);
+                this.showSpeechBubble(`Équipé : ${item.name} ${item.icon} ! ✨`, 2800);
+              }
+              this.refreshShopUI();
+              void this.persistSaveState();
+            });
+            actionsDiv.appendChild(ownedBtn);
+          } else {
+            const buyBtn = document.createElement('button');
+            buyBtn.type = 'button';
+            buyBtn.className = 'shop-action-btn buy';
+            buyBtn.textContent = `🪙 ${item.price} Acheter`;
+            const canAfford = pet.tamaCoins >= item.price;
+            if (!canAfford) {
+              buyBtn.disabled = true;
+              buyBtn.title = 'Pas assez de pièces TamaCoins !';
+            }
+            buyBtn.addEventListener('click', () => {
+              const res = this.engine.buyCosmetic(item.id);
+              if (res.purchased) {
+                this.engine.equipCosmetic(item.slot, item.id);
+                this.refreshShopUI();
+                this.animator.spawnParticles('confetti', this.petActor.x, this.petActor.y, 10);
+                this.showSpeechBubble(`Acheté et équipé : ${item.name} ${item.icon} ! 🎉`, 3200);
+                void this.persistSaveState();
+              } else {
+                this.showSpeechBubble('Pas assez de pièces TamaCoins ! 🪙');
+              }
+            });
+            actionsDiv.appendChild(buyBtn);
+          }
+        }
+
+        card.appendChild(iconDiv);
+        card.appendChild(nameDiv);
+        card.appendChild(descDiv);
+        card.appendChild(actionsDiv);
+
+        this.shopItemsGridEl.appendChild(card);
+        totalCardsAdded++;
+      }
     }
 
-    if (itemsToDisplay.length === 0) {
+    if (totalCardsAdded === 0) {
       const emptyDiv = document.createElement('div');
       emptyDiv.className = 'shop-empty-state';
       if (this.currentShopTab === 'inventory') {
         emptyDiv.innerHTML = `
-          <div>🎒 Vous ne possédez aucun cosmétique dans cette catégorie pour l'instant.</div>
+          <div>🎒 Vous ne possédez aucun article dans cette catégorie pour l'instant.</div>
           <button type="button" class="shop-action-btn equip" id="btn-goto-market" style="width: auto; padding: 7px 16px; margin-top: 10px;">
             🛍️ Ouvrir la Boutique pour en acheter
           </button>
@@ -2549,101 +2844,6 @@ class DesktopPetRendererApp {
         emptyDiv.textContent = '✨ Aucun article trouvé.';
       }
       this.shopItemsGridEl.appendChild(emptyDiv);
-      return;
-    }
-
-    for (const item of itemsToDisplay) {
-      const isOwned = pet.ownedCosmetics.includes(item.id);
-      const isEquipped = pet.equippedCosmetics[item.slot] === item.id;
-
-      const card = document.createElement('div');
-      card.className = `shop-item-card ${isEquipped ? 'is-equipped' : isOwned ? 'owned' : ''}`;
-
-      const iconDiv = document.createElement('div');
-      iconDiv.className = 'shop-item-icon';
-      iconDiv.textContent = item.icon;
-
-      const nameDiv = document.createElement('div');
-      nameDiv.className = 'shop-item-name';
-      nameDiv.textContent = item.name;
-
-      const descDiv = document.createElement('div');
-      descDiv.className = 'shop-item-desc';
-      descDiv.textContent = item.description;
-
-      const actionsDiv = document.createElement('div');
-      actionsDiv.className = 'shop-item-actions';
-
-      if (this.currentShopTab === 'inventory') {
-        // Mode Inventaire : bouton Équiper / Déséquiper
-        const toggleBtn = document.createElement('button');
-        toggleBtn.type = 'button';
-        toggleBtn.className = `shop-action-btn ${isEquipped ? 'buy' : 'equip'}`;
-        toggleBtn.textContent = isEquipped ? 'Déséquiper' : 'Équiper';
-        toggleBtn.addEventListener('click', () => {
-          if (isEquipped) {
-            this.engine.equipCosmetic(item.slot, null);
-            this.animator.spawnParticles('sparkle', this.petActor.x, this.petActor.y, 4);
-          } else {
-            this.engine.equipCosmetic(item.slot, item.id);
-            this.animator.spawnParticles('star', this.petActor.x, this.petActor.y, 6);
-            this.showSpeechBubble(`Équipé : ${item.name} ${item.icon} ! ✨`, 2800);
-          }
-          this.refreshShopUI();
-          void this.persistSaveState();
-        });
-        actionsDiv.appendChild(toggleBtn);
-      } else {
-        // Mode Boutique : achat
-        if (isOwned) {
-          const ownedBtn = document.createElement('button');
-          ownedBtn.type = 'button';
-          ownedBtn.className = `shop-action-btn ${isEquipped ? 'buy' : 'equip'}`;
-          ownedBtn.textContent = isEquipped ? '✓ Équipé' : '✓ Possédé (Équiper)';
-          ownedBtn.addEventListener('click', () => {
-            if (isEquipped) {
-              this.engine.equipCosmetic(item.slot, null);
-            } else {
-              this.engine.equipCosmetic(item.slot, item.id);
-              this.animator.spawnParticles('star', this.petActor.x, this.petActor.y, 6);
-              this.showSpeechBubble(`Équipé : ${item.name} ${item.icon} ! ✨`, 2800);
-            }
-            this.refreshShopUI();
-            void this.persistSaveState();
-          });
-          actionsDiv.appendChild(ownedBtn);
-        } else {
-          const buyBtn = document.createElement('button');
-          buyBtn.type = 'button';
-          buyBtn.className = 'shop-action-btn buy';
-          buyBtn.textContent = `🪙 ${item.price} Acheter`;
-          const canAfford = pet.tamaCoins >= item.price;
-          if (!canAfford) {
-            buyBtn.disabled = true;
-            buyBtn.title = 'Pas assez de pièces TamaCoins !';
-          }
-          buyBtn.addEventListener('click', () => {
-            const res = this.engine.buyCosmetic(item.id);
-            if (res.purchased) {
-              this.engine.equipCosmetic(item.slot, item.id);
-              this.refreshShopUI();
-              this.animator.spawnParticles('confetti', this.petActor.x, this.petActor.y, 10);
-              this.showSpeechBubble(`Acheté et équipé : ${item.name} ${item.icon} ! 🎉`, 3200);
-              void this.persistSaveState();
-            } else {
-              this.showSpeechBubble('Pas assez de pièces TamaCoins ! 🪙');
-            }
-          });
-          actionsDiv.appendChild(buyBtn);
-        }
-      }
-
-      card.appendChild(iconDiv);
-      card.appendChild(nameDiv);
-      card.appendChild(descDiv);
-      card.appendChild(actionsDiv);
-
-      this.shopItemsGridEl.appendChild(card);
     }
   }
 

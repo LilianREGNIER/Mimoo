@@ -169,6 +169,12 @@ export function feedPet(
     return { pet, accepted: false, reason: 'full' };
   }
 
+  if (pet.foodInventory && typeof pet.foodInventory[food.id] === 'number') {
+    if (pet.foodInventory[food.id] <= 0) {
+      return { pet, accepted: false, reason: 'no_stock' };
+    }
+  }
+
   const nextNeeds: NeedsState = {
     hunger: clampNeed(pet.needs.hunger + (food.effects.hunger ?? 0)),
     energy: clampNeed(pet.needs.energy + (food.effects.energy ?? 0)),
@@ -186,6 +192,10 @@ export function feedPet(
     discoveredForms: [...pet.discoveredForms],
     position: { ...pet.position },
     tamaCoins: (pet.tamaCoins ?? 0) + 5,
+    foodInventory:
+      pet.foodInventory && typeof pet.foodInventory[food.id] === 'number'
+        ? { ...pet.foodInventory, [food.id]: Math.max(0, pet.foodInventory[food.id] - 1) }
+        : pet.foodInventory,
     ownedCosmetics: [...(pet.ownedCosmetics ?? [])],
     equippedCosmetics: {
       ...(pet.equippedCosmetics ?? { hat: null, accessory: null, aura: null }),
@@ -203,6 +213,43 @@ export function feedPet(
   return {
     pet: updatedPet,
     accepted: true,
+  };
+}
+
+/**
+ * Achète des portions de nourriture dans la boutique avec des pièces `tamaCoins`.
+ */
+export function buyFoodItem(
+  pet: PetState,
+  food: FoodItem,
+  quantity = 1
+): {
+  pet: PetState;
+  purchased: boolean;
+  reason?: 'insufficient_coins' | 'invalid_quantity';
+} {
+  const safeQty = Math.max(1, Math.floor(quantity));
+  const price = typeof food.price === 'number' && food.price > 0 ? food.price : 5;
+  const totalPrice = price * safeQty;
+
+  const currentCoins = Number.isFinite(pet.tamaCoins) ? pet.tamaCoins : 0;
+  if (currentCoins < totalPrice) {
+    return { pet, purchased: false, reason: 'insufficient_coins' };
+  }
+
+  const inventory = { ...(pet.foodInventory ?? {}) };
+  const currentCount = inventory[food.id] ?? 0;
+  inventory[food.id] = currentCount + safeQty;
+
+  const updatedPet: PetState = {
+    ...pet,
+    tamaCoins: currentCoins - totalPrice,
+    foodInventory: inventory,
+  };
+
+  return {
+    pet: updatedPet,
+    purchased: true,
   };
 }
 

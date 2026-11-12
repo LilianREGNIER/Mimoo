@@ -50,12 +50,13 @@ export class MiniGamesController {
 
   private activeGame: MiniGameId | null = null;
 
-  // État Mini-jeu 1 : Attrape-Étoile (12s, 5 étoiles)
+  // État Mini-jeu 1 : Attrape-Étoile (10s chrono, étoiles en mouvement continu avec rebonds et respawn)
   private stars: BouncingStar[] = [];
   private starCatchTimeRemaining = 0;
   private starCatchScore = 0;
-  private readonly starCatchTotalStars = 5;
-  private readonly starCatchDurationSeconds = 12;
+  private readonly starCatchSimultaneousStars = 6;
+  private readonly starCatchDurationSeconds = 10;
+  private nextStarId = 1;
 
   // État Mini-jeu 2 : Pierre-Feuille-Ciseaux (3 manches)
   private rpsRound = 1;
@@ -136,8 +137,37 @@ export class MiniGamesController {
     return this.activeGame;
   }
 
+  private spawnStar(initial = false): BouncingStar {
+    const margin = 50;
+    const minX = margin;
+    const maxX = Math.max(minX + 120, window.innerWidth - margin);
+    const minY = 50;
+    const maxY = Math.max(minY + 120, this.petActor.getGroundY() - 30);
+
+    const x = minX + Math.random() * (maxX - minX);
+    const y = minY + Math.random() * (maxY - minY);
+
+    // Vitesse fluide et dynamique dans toutes les directions pour rebondir en continu
+    const speed = 130 + Math.random() * 130;
+    const angle = Math.random() * Math.PI * 2;
+    const vx = Math.cos(angle) * speed;
+    const vy = Math.sin(angle) * speed;
+
+    return {
+      id: this.nextStarId++,
+      x,
+      y,
+      vx,
+      vy,
+      radius: 22,
+      rotation: Math.random() * Math.PI * 2,
+      rotationSpeed: (Math.random() < 0.5 ? -1 : 1) * (2.0 + Math.random() * 2.5),
+      caught: false,
+    };
+  }
+
   /**
-   * Démarre le mini-jeu Attrape-Étoile (`star_catch`) pour 12 secondes avec 5 étoiles dorées.
+   * Démarre le mini-jeu Attrape-Étoile (`star_catch`) pour 10 secondes chrono avec des étoiles rebondissantes.
    */
   public startStarCatch(): void {
     this.cancelActiveGame();
@@ -146,33 +176,14 @@ export class MiniGamesController {
     this.starCatchScore = 0;
     this.stars = [];
 
-    const margin = 80;
-    const usableWidth = Math.max(200, window.innerWidth - margin * 2);
-
-    for (let i = 0; i < this.starCatchTotalStars; i++) {
-      const slotWidth = usableWidth / this.starCatchTotalStars;
-      const spawnX = margin + slotWidth * i + slotWidth * (0.25 + Math.random() * 0.5);
-      const spawnY = 60 + Math.random() * 140;
-      const vx = (Math.random() < 0.5 ? -1 : 1) * (65 + Math.random() * 75);
-      const vy = -40 + Math.random() * 60;
-
-      this.stars.push({
-        id: i,
-        x: spawnX,
-        y: spawnY,
-        vx,
-        vy,
-        radius: 22,
-        rotation: Math.random() * Math.PI * 2,
-        rotationSpeed: (Math.random() < 0.5 ? -1 : 1) * (2.2 + Math.random() * 2),
-        caught: false,
-      });
+    for (let i = 0; i < this.starCatchSimultaneousStars; i++) {
+      this.stars.push(this.spawnStar(true));
     }
 
     this.updateStarBanner();
     this.starBannerEl?.classList.remove('hidden');
     this.animator.setState('play', 1200);
-    this.callbacks.onSpeech('Attrape les 5 étoiles dorées ! ⭐');
+    this.callbacks.onSpeech('Attrape un maximum d\'étoiles en 10 secondes ! ⭐');
     this.callbacks.onUiStateChanged();
   }
 
@@ -315,9 +326,10 @@ export class MiniGamesController {
     const safeDt = Math.min(0.1, Math.max(0, dtSeconds));
     this.starCatchTimeRemaining = Math.max(0, this.starCatchTimeRemaining - safeDt);
 
-    const groundBottom = this.petActor.getGroundY() + 18;
     const minX = 36;
     const maxX = Math.max(minX + 60, window.innerWidth - 36);
+    const minY = 36;
+    const maxY = Math.max(minY + 60, this.petActor.getGroundY() + 18);
     const petHitRadius = this.petActor.getDrawSize() * 0.52;
 
     for (const star of this.stars) {
@@ -325,13 +337,12 @@ export class MiniGamesController {
         continue;
       }
 
-      // Gravité et rebonds
-      star.vy += 360 * safeDt;
+      // Mouvement fluide continu dans toutes les directions
       star.x += star.vx * safeDt;
       star.y += star.vy * safeDt;
       star.rotation += star.rotationSpeed * safeDt;
 
-      // Rebonds sur les bords gauche/droit du bureau
+      // Rebonds sur les 4 bords de l'écran en continu
       if (star.x <= minX) {
         star.x = minX;
         star.vx = Math.abs(star.vx);
@@ -340,10 +351,12 @@ export class MiniGamesController {
         star.vx = -Math.abs(star.vx);
       }
 
-      // Rebond joyeux sur le sol du bureau
-      if (star.y >= groundBottom) {
-        star.y = groundBottom;
-        star.vy = -(230 + Math.random() * 110);
+      if (star.y <= minY) {
+        star.y = minY;
+        star.vy = Math.abs(star.vy);
+      } else if (star.y >= maxY) {
+        star.y = maxY;
+        star.vy = -Math.abs(star.vy);
       }
 
       // Capture automatique si le familier passe sous/contre l'étoile
@@ -355,10 +368,7 @@ export class MiniGamesController {
 
     this.updateStarBanner();
 
-    if (
-      this.starCatchScore >= this.starCatchTotalStars ||
-      this.starCatchTimeRemaining <= 0
-    ) {
+    if (this.starCatchTimeRemaining <= 0) {
       this.finishStarCatch();
     }
   }
@@ -431,15 +441,20 @@ export class MiniGamesController {
     }
     star.caught = true;
     this.starCatchScore += 1;
-    this.animator.spawnParticles('star', star.x, star.y, 5);
-    this.animator.spawnParticles('sparkle', star.x, star.y, 4);
-    this.animator.setState('happy', 650);
+    this.animator.spawnParticles('star', star.x, star.y, 6);
+    this.animator.spawnParticles('sparkle', star.x, star.y, 5);
+    this.animator.setState('happy', 600);
+
+    // L'étoile disparaît et une autre réapparaît immédiatement à un endroit aléatoire
+    this.stars = this.stars.filter((s) => s.id !== star.id);
+    this.stars.push(this.spawnStar());
+
     this.updateStarBanner();
   }
 
   private updateStarBanner(): void {
     if (this.starScoreEl) {
-      this.starScoreEl.textContent = `${this.starCatchScore} / ${this.starCatchTotalStars}`;
+      this.starScoreEl.textContent = `${this.starCatchScore} ⭐`;
     }
     if (this.starTimerEl) {
       this.starTimerEl.textContent = `${Math.max(0, this.starCatchTimeRemaining).toFixed(1)}s`;
@@ -448,8 +463,8 @@ export class MiniGamesController {
 
   private finishStarCatch(): void {
     const score = this.starCatchScore;
-    const maxScore = this.starCatchTotalStars;
-    const won = score >= 3;
+    const maxScore = Math.max(10, score);
+    const won = score >= 5;
 
     this.activeGame = null;
     this.stars = [];

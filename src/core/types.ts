@@ -125,6 +125,8 @@ export interface FoodItem {
   category: FoodCategory;
   /** Effets appliqués aux jauges de besoins lors de la consommation. */
   effects: Partial<NeedsState>;
+  /** Prix en pièces TamaCoins dans la boutique (ex: 5 pour une pomme). */
+  price?: number;
   /** Temps de recharge optionnel en millisecondes. */
   cooldownMs?: number;
 }
@@ -320,6 +322,8 @@ export interface PetState {
   ownedCosmetics: string[];
   /** Objets cosmétiques actuellement équipés sur le familier. */
   equippedCosmetics: EquippedCosmetics;
+  /** Inventaire des portions de nourriture achetées en boutique { [foodId]: quantity }. */
+  foodInventory?: Record<string, number>;
   /** État du minuteur Focus / Pomodoro pour la productivité. */
   pomodoro?: PomodoroState;
 }

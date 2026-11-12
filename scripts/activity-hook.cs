@@ -48,6 +48,7 @@ class Program {
     private static bool lastMusicState = false;
     private static int heartbeatTick = 0;
     private static int musicSilenceCounter = 0;
+    private static int cachedShadowMargin = 7;
 
     private delegate IntPtr LowLevelProc(int nCode, IntPtr wParam, IntPtr lParam);
     private static LowLevelProc mouseProc = MouseHookCallback;
@@ -55,11 +56,19 @@ class Program {
     private static IntPtr mouseHookId = IntPtr.Zero;
     private static IntPtr keyHookId = IntPtr.Zero;
 
+    private delegate void WinEventDelegate(IntPtr hWinEventHook, uint eventType, IntPtr hwnd, int idObject, int idChild, uint dwEventThread, uint dwmsEventTime);
+    private static WinEventDelegate winEventProc = WinEventCallback;
+    private static IntPtr winEventHookId = IntPtr.Zero;
+
+    private const uint EVENT_OBJECT_LOCATIONCHANGE = 0x800B;
+    private const uint WINEVENT_OUTOFCONTEXT = 0x0000;
+    private const int OBJID_WINDOW = 0;
+
     private static IAudioMeterInformation audioMeter = null;
 
     private static void EmitWindowIfChanged(bool force = false) {
         long now = emitStopwatch.ElapsedMilliseconds;
-        if (!force && (now - lastEmitTimestamp < 8)) {
+        if (!force && (now - lastEmitTimestamp < 4)) {
             return;
         }
         string wJson = GetForegroundWindowJson();
@@ -72,9 +81,20 @@ class Program {
         }
     }
 
+    private static void WinEventCallback(IntPtr hWinEventHook, uint eventType, IntPtr hwnd, int idObject, int idChild, uint dwEventThread, uint dwmsEventTime) {
+        if (eventType == EVENT_OBJECT_LOCATIONCHANGE && idObject == OBJID_WINDOW && hwnd != IntPtr.Zero) {
+            IntPtr fg = GetForegroundWindow();
+            if (hwnd == fg) {
+                EmitWindowIfChanged(true);
+            }
+        }
+    }
+
     private static IntPtr MouseHookCallback(int nCode, IntPtr wParam, IntPtr lParam) {
         if (nCode >= 0) {
             int msg = wParam.ToInt32();
+            bool isPhysicallyDown = (GetAsyncKeyState(0x01) & 0x8000) != 0;
+
             if (msg == WM_LBUTTONDOWN) {
                 isLeftMouseDown = true;
                 Interlocked.Increment(ref clickCount);
@@ -84,8 +104,8 @@ class Program {
                 EmitWindowIfChanged(true);
             } else if (msg == WM_RBUTTONDOWN || msg == WM_MBUTTONDOWN) {
                 Interlocked.Increment(ref clickCount);
-            } else if (msg == WM_MOUSEMOVE && isLeftMouseDown) {
-                // Dès que la souris bouge avec le bouton gauche appuyé (glissement de fenêtre en direct),
+            } else if (msg == WM_MOUSEMOVE && (isLeftMouseDown || isPhysicallyDown)) {
+                // Dès que la souris bouge avec le bouton gauche appuyé (glissement physique de fenêtre),
                 // on émet la nouvelle géométrie instantanément sans aucun délai de timer !
                 EmitWindowIfChanged(false);
             }
@@ -112,6 +132,15 @@ class Program {
 
     [DllImport("user32.dll")]
     private static extern IntPtr CallNextHookEx(IntPtr hhk, int nCode, IntPtr wParam, IntPtr lParam);
+
+    [DllImport("user32.dll")]
+    private static extern short GetAsyncKeyState(int vKey);
+
+    [DllImport("user32.dll")]
+    private static extern IntPtr SetWinEventHook(uint eventMin, uint eventMax, IntPtr hmodWinEventProc, WinEventDelegate lpfnWinEventProc, uint idProcess, uint idThread, uint dwFlags);
+
+    [DllImport("user32.dll")]
+    private static extern bool UnhookWinEvent(IntPtr hWinEventHook);
 
     [DllImport("kernel32.dll", CharSet = CharSet.Auto, SetLastError = true)]
     private static extern IntPtr GetModuleHandle(string lpModuleName);
@@ -246,14 +275,28 @@ class Program {
 
                 if (!isOwnApp && !isSystem) {
                     RECT r = new RECT();
-                    int hr = -1;
-                    try {
-                        hr = DwmGetWindowAttribute(fg, DWMWA_EXTENDED_FRAME_BOUNDS, out r, Marshal.SizeOf(typeof(RECT)));
-                    } catch {
-                        hr = -1;
-                    }
-                    if (hr != 0) {
-                        if (!GetWindowRect(fg, out r)) return lastValidWindowJson;
+                    if (!GetWindowRect(fg, out r)) return lastValidWindowJson;
+
+                    bool isDragging = isLeftMouseDown || ((GetAsyncKeyState(0x01) & 0x8000) != 0);
+
+                    // Si pas en train de glisser, on mesure la bordure invisible d'ombre portée DWM
+                    if (!isDragging) {
+                        RECT dwmR = new RECT();
+                        int hr = -1;
+                        try {
+                            hr = DwmGetWindowAttribute(fg, DWMWA_EXTENDED_FRAME_BOUNDS, out dwmR, Marshal.SizeOf(typeof(RECT)));
+                        } catch {
+                            hr = -1;
+                        }
+                        if (hr == 0 && dwmR.Right > dwmR.Left && dwmR.Bottom > dwmR.Top) {
+                            cachedShadowMargin = Math.Max(0, dwmR.Left - r.Left);
+                            r = dwmR;
+                        }
+                    } else {
+                        // En plein glissement de fenêtre, GetWindowRect est synchrone avec le noyau Windows à 0 ms de délai !
+                        r.Left += cachedShadowMargin;
+                        r.Right -= cachedShadowMargin;
+                        r.Bottom -= cachedShadowMargin;
                     }
 
                     int rawW = r.Right - r.Left;
@@ -291,13 +334,16 @@ class Program {
             IntPtr moduleHandle = GetModuleHandle(curModule.ModuleName);
             mouseHookId = SetWindowsHookEx(WH_MOUSE_LL, mouseProc, moduleHandle, 0);
             keyHookId = SetWindowsHookEx(WH_KEYBOARD_LL, keyProc, moduleHandle, 0);
+            try {
+                winEventHookId = SetWinEventHook(EVENT_OBJECT_LOCATIONCHANGE, EVENT_OBJECT_LOCATIONCHANGE, IntPtr.Zero, winEventProc, 0, 0, WINEVENT_OUTOFCONTEXT);
+            } catch {}
         }
 
-        // 1. Suivi haute fréquence (~100 Hz, 10 ms) pour les déplacements clavier (Win+Flèches), restaurations, et animations
-        // Les glissements à la souris sont eux traités instantanément dans le hook de souris sans délai.
+        // 1. Suivi haute fréquence (~125 Hz, 8 ms) pour les déplacements clavier (Win+Flèches), restaurations, et animations
+        // Les glissements à la souris et WinEvents sont traités instantanément sans aucun délai.
         Timer windowTimer = new Timer((e) => {
             EmitWindowIfChanged(false);
-        }, null, 10, 10);
+        }, null, 8, 8);
 
         // 2. Échantillonnage d'activité et musique toutes les 500 ms
         Timer reportTimer = new Timer((e) => {
@@ -365,6 +411,9 @@ class Program {
 
         windowTimer.Dispose();
         reportTimer.Dispose();
+        if (winEventHookId != IntPtr.Zero) {
+            try { UnhookWinEvent(winEventHookId); } catch {}
+        }
         UnhookWindowsHookEx(mouseHookId);
         UnhookWindowsHookEx(keyHookId);
     }
