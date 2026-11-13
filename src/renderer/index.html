@@ -137,6 +137,13 @@
               <small>Attrape la balle à la souris et lance-la avec élan !</small>
             </div>
           </button>
+          <button id="btn-start-simon" class="game-choice-card">
+            <span class="game-choice-icon">🎵</span>
+            <div class="game-choice-text">
+              <strong>Simon Musical</strong>
+              <small>5 manches • Mémorise et répète la mélodie colorée !</small>
+            </div>
+          </button>
         </div>
       </div>
 
@@ -237,6 +244,28 @@
       </div>
     </section>
 
+    <!-- Panneau Mini-jeu Simon Musical (#simon-overlay) -->
+    <section
+      id="simon-overlay"
+      class="glass-panel rps-panel ui-interactive hidden"
+      role="dialog"
+      aria-label="Simon Musical"
+    >
+      <header class="rps-header">
+        <div class="rps-title-row">
+          <span class="rps-title">🎵 Simon Musical</span>
+        </div>
+        <button id="btn-close-simon" class="icon-close-btn" title="Quitter">✕</button>
+      </header>
+      <p id="simon-status" class="rps-status-text" style="text-align:center;margin:6px 0 10px;">Manche 1/5 — Écoute bien !</p>
+      <div class="simon-grid">
+        <button type="button" id="simon-pad-0" class="simon-pad simon-red" aria-label="Rouge">🔴</button>
+        <button type="button" id="simon-pad-1" class="simon-pad simon-blue" aria-label="Bleu">🔵</button>
+        <button type="button" id="simon-pad-2" class="simon-pad simon-green" aria-label="Vert">🟢</button>
+        <button type="button" id="simon-pad-3" class="simon-pad simon-yellow" aria-label="Jaune">🟡</button>
+      </div>
+    </section>
+
     <!-- Fenêtre Statistiques, Compendium & Réglages -->
     <section
       id="stats-modal"
@@ -314,6 +343,11 @@
             <span class="food-pill">🍣 Gourmet : <b id="stat-cat-gourmet">0</b></span>
           </div>
         </div>
+
+        <div class="food-breakdown-card" style="margin-top: 10px;">
+          <h3 class="section-mini-title">🎯 Défis Quotidiens</h3>
+          <div id="daily-quests-list" class="daily-quests-list"></div>
+        </div>
       </div>
 
       <!-- Contenu Onglet 2 : Galerie d'évolution (Compendium 19 formes) -->
@@ -346,6 +380,14 @@
               <small>Permet au familier de grimper occasionnellement sur les fenêtres ouvertes</small>
             </div>
             <input type="checkbox" id="toggle-window-jump" class="ui-switch" checked />
+          </label>
+
+          <label class="setting-row">
+            <div class="setting-info">
+              <strong>Bruitages mignons</strong>
+              <small>Sons doux et rétro lors des repas, câlins, jeux et évolutions</small>
+            </div>
+            <input type="checkbox" id="toggle-sound" class="ui-switch" checked />
           </label>
 
           <div class="setting-row">
@@ -680,6 +722,7 @@
           <button class="shop-filter-btn" data-category="hat">👑 Chapeaux</button>
           <button class="shop-filter-btn" data-category="accessory">🕶️ Accessoires</button>
           <button class="shop-filter-btn" data-category="aura">🌈 Auras</button>
+          <button class="shop-filter-btn" data-category="decor">🪴 Décorations</button>
         </div>
         <div id="shop-items-grid" class="shop-items-grid"></div>
       </div>
@@ -743,6 +786,24 @@
           <div class="room-input-row">
             <input type="text" id="input-room-code" class="text-input" placeholder="Code salon (ex: PETS-1)" value="PETS-1" />
             <button id="btn-join-room" class="secondary-btn">Rejoindre / Créer</button>
+          </div>
+          <div id="room-social-controls" class="room-social-controls hidden">
+            <div class="room-chat-row">
+              <input type="text" id="input-room-chat" class="text-input" maxlength="90" placeholder="Dire un petit mot dans le salon..." />
+              <button id="btn-send-room-chat" class="action-btn-highlight">Envoyer</button>
+            </div>
+            <div class="room-emotes-row">
+              <button type="button" class="secondary-btn room-emote-btn" data-emote="heart">❤️ Câlin</button>
+              <button type="button" class="secondary-btn room-emote-btn" data-emote="gift">🍎 Friandise</button>
+              <button type="button" class="secondary-btn room-emote-btn" data-emote="snowball">❄️ Neige</button>
+              <button type="button" class="secondary-btn room-emote-btn" data-emote="confetti">🎉 Confettis</button>
+            </div>
+            <div class="room-rps-row">
+              <span class="online-desc" style="margin:0;">Duel PFC en direct :</span>
+              <button type="button" class="secondary-btn room-rps-btn" data-choice="rock">✊</button>
+              <button type="button" class="secondary-btn room-rps-btn" data-choice="paper">✋</button>
+              <button type="button" class="secondary-btn room-rps-btn" data-choice="scissors">✌️</button>
+            </div>
           </div>
         </div>
 

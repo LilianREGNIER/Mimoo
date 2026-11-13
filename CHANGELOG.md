@@ -1,5 +1,13 @@
 # Changelog — Mimoo
 
+## v1.0.5
+- **Salon Online social** : chat rapide dans le salon, émotes & cadeaux (`❤️ Câlin`, `🍎 Friandise +5 🪙`, `❄️ Boule de neige`, `🎉 Confettis`) et duel Pierre-Feuille-Ciseaux en direct (`+15 🪙` en cas de victoire).
+- **Défis Quotidiens** : 3 quêtes journalières générées chaque jour dans **Journal → Statistiques** avec récompenses en MimooCoins.
+- **Décorations de bureau** : Panier douillet, Gamelle étoilée, Plante de bureau et Petite lampe (qui s'illumine la nuit) achetables en boutique et affichées sur le bureau.
+- **Mini-jeu Simon Musical** : jeu de mémoire à 5 manches avec pads lumineux et notes musicales.
+- **Bruitages mignons (Web Audio API)** : effets sonores doux/rétro désactivables dans **Réglages → Bruitages mignons**.
+- **Réactions contextuelles & Météo** : réactions selon l'application active (VS Code, YouTube/Netflix, Discord, Spotify) et météo réelle (`wttr.in`).
+
 ## v1.0.4
 - **Correction téléchargement auto-updater (`404`)** : noms d'artefacts sans espaces (`Mimoo-Setup-1.0.4.exe`) pour correspondre exactement à `latest.yml` sur GitHub Releases, et distinction entre erreur `404` et erreur d'authentification (`401`/`403`).
 

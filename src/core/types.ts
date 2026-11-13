@@ -132,7 +132,7 @@ export interface FoodItem {
 }
 
 /** Identifiants des mini-jeux jouables avec le familier. */
-export type MiniGameId = 'star_catch' | 'rps_duel';
+export type MiniGameId = 'star_catch' | 'rps_duel' | 'simon_memory';
 
 /** Résultat d'une session de mini-jeu. */
 export interface MiniGameResult {
@@ -278,8 +278,41 @@ export interface UserSettings {
   petScale: number;
   /** Permet au familier de sauter occasionnellement sur les fenêtres actives. */
   windowJumpEnabled: boolean;
+  /** Active les bruitages mignons de l'application. */
+  soundEnabled?: boolean;
   /** Jeton personnel GitHub optionnel pour télécharger les mises à jour d'un dépôt privé. */
   githubUpdateToken?: string;
+}
+
+export type DailyQuestKind = 'feed' | 'play' | 'pet' | 'clean' | 'pomodoro';
+
+export interface DailyQuest {
+  id: string;
+  kind: DailyQuestKind;
+  title: string;
+  target: number;
+  progress: number;
+  rewardCoins: number;
+  claimed: boolean;
+}
+
+export interface DailyQuestsState {
+  dateKey: string;
+  quests: DailyQuest[];
+}
+
+export interface DecorationItem {
+  id: string;
+  name: string;
+  price: number;
+  emoji: string;
+  description: string;
+}
+
+export interface PlacedDecoration {
+  id: string;
+  x: number;
+  y: number;
 }
 
 export type UpdateStatusState =
@@ -347,6 +380,12 @@ export interface PetState {
   foodInventory?: Record<string, number>;
   /** État du minuteur Focus / Pomodoro pour la productivité. */
   pomodoro?: PomodoroState;
+  /** Défis quotidiens du jour. */
+  dailyQuests?: DailyQuestsState;
+  /** Décorations de bureau achetées. */
+  ownedDecorations?: string[];
+  /** Décorations actuellement posées sur le bureau. */
+  placedDecorations?: PlacedDecoration[];
 }
 
 /** Informations de géométrie de la fenêtre active au premier plan sous Windows. */

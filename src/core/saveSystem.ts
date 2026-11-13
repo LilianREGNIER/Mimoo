@@ -121,6 +121,7 @@ export function createDefaultSettings(): UserSettings {
     preferredDisplayId: null,
     petScale: 1,
     windowJumpEnabled: true,
+    soundEnabled: true,
   };
 }
 
@@ -632,6 +633,10 @@ export function validateAndMigrateSaveData(
       typeof rawSettings.windowJumpEnabled === 'boolean'
         ? rawSettings.windowJumpEnabled
         : defaultSettings.windowJumpEnabled,
+    soundEnabled:
+      typeof rawSettings.soundEnabled === 'boolean'
+        ? rawSettings.soundEnabled
+        : true,
     ...(typeof rawSettings.githubUpdateToken === 'string' &&
     rawSettings.githubUpdateToken.trim().length > 0
       ? { githubUpdateToken: rawSettings.githubUpdateToken.trim() }
@@ -671,6 +676,24 @@ export function validateAndMigrateSaveData(
       equippedCosmetics,
       foodInventory,
       pomodoro,
+      ...(rawPet.dailyQuests && typeof rawPet.dailyQuests === 'object'
+        ? { dailyQuests: rawPet.dailyQuests as SaveDataV1['pet']['dailyQuests'] }
+        : {}),
+      ...(Array.isArray(rawPet.ownedDecorations)
+        ? {
+            ownedDecorations: rawPet.ownedDecorations.filter(
+              (id): id is string => typeof id === 'string'
+            ),
+          }
+        : {}),
+      ...(Array.isArray(rawPet.placedDecorations)
+        ? {
+            placedDecorations: rawPet.placedDecorations.filter(
+              (d): d is { id: string; x: number; y: number } =>
+                Boolean(d && typeof d === 'object' && typeof (d as { id?: unknown }).id === 'string')
+            ),
+          }
+        : {}),
     },
     settings,
   };

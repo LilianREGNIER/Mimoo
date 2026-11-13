@@ -1,0 +1,30 @@
+[
+  {
+    "id": "cozy_bed",
+    "name": "Panier Douillet",
+    "price": 45,
+    "emoji": "🛏️",
+    "description": "Un petit coussin moelleux posé sur votre bureau."
+  },
+  {
+    "id": "food_bowl",
+    "name": "Gamelle Étoilée",
+    "price": 30,
+    "emoji": "🥣",
+    "description": "Une jolie gamelle toujours prête pour les repas."
+  },
+  {
+    "id": "mini_plant",
+    "name": "Plante de Bureau",
+    "price": 35,
+    "emoji": "🪴",
+    "description": "Une petite plante verte qui égaye l'écran."
+  },
+  {
+    "id": "desk_lamp",
+    "name": "Petite Lampe",
+    "price": 50,
+    "emoji": "💡",
+    "description": "Une veilleuse chaleureuse pour les soirées sur le PC."
+  }
+]

@@ -6,6 +6,7 @@
  */
 
 import defaultCosmeticsJson from '../../data/cosmetics.json';
+import defaultDecorationsJson from '../../data/decorations.json';
 import defaultFoodsJson from '../../data/foods.json';
 import defaultGameConfigJson from '../../data/game-config.json';
 import defaultSpeciesJson from '../../data/species.json';
@@ -16,6 +17,7 @@ import {
   type ActiveWindowInfo,
   type BootstrapPayload,
   type CosmeticItem,
+  type DecorationItem,
   type DisplayBoundsInfo,
   type AnimationState,
   type FoodCategory,
@@ -38,8 +40,10 @@ import {
 import { BallEntity } from './ballEntity';
 import { HitTester } from './hitTester';
 import { MiniGamesController } from './miniGames';
-import { OnlineManager } from './onlineManager';
+import { OnlineManager, type RoomEmoteKind, type RoomRpsChoice } from './onlineManager';
 import { PetActor } from './petActor';
+import { SimonGame } from './simonGame';
+import { SoundManager } from './soundManager';
 import {
   type DialoguePropType,
   type ParticleKind,
@@ -193,6 +197,15 @@ class DesktopPetRendererApp {
   private currentShopCategory = 'all';
   private currentShopTab: 'market' | 'inventory' = 'market';
   private shopModalPositioned = false;
+  private readonly soundManager = new SoundManager();
+  private simonGame!: SimonGame;
+  private readonly decorationsCatalog: DecorationItem[] =
+    defaultDecorationsJson as unknown as DecorationItem[];
+  private lastAppReactionAt = 0;
+  private lastReactedAppKey = '';
+  private weatherMood: 'clear' | 'rain' | 'snow' = 'clear';
+  private pendingMyRpsChoice: RoomRpsChoice | null = null;
+  private pendingFriendRps: { name: string; choice: RoomRpsChoice } | null = null;
 
   constructor() {
     const canvasEl = document.getElementById('pet-canvas') as HTMLCanvasElement | null;
@@ -290,6 +303,8 @@ class DesktopPetRendererApp {
     this.petActor.setScales(initialSpecies?.scale ?? 1, settings.petScale ?? 1);
     this.petActor.setWalkSpeed(initialSpecies?.walkSpeed ?? 0);
     this.petActor.setWindowJumpEnabled(settings.windowJumpEnabled ?? true);
+    this.soundManager.setEnabled(settings.soundEnabled ?? true);
+    void this.fetchWeatherMood();
 
     // 3.5 Initialisation du gestionnaire Mode Online & Amis
     this.onlineManager = new OnlineManager({
@@ -319,6 +334,51 @@ class DesktopPetRendererApp {
           this.showSpeechBubble(`⚠️ Reconnexion au salon [${roomCode}]...`, 2800);
         }
         this.refreshOnlineUI();
+      },
+      onFriendChat: (senderName, message) => {
+        this.soundManager.play('emote');
+        this.showSpeechBubble(`💬 ${senderName} : ${message}`, 4500);
+      },
+      onFriendEmote: (senderName, kind, visitor) => {
+        const vx = visitor?.x ?? this.petActor.x;
+        const vy = visitor?.y ?? this.petActor.y;
+        if (kind === 'heart') {
+          this.soundManager.play('pet');
+          this.animator.spawnParticles('heart', vx, vy - 20, 8);
+          this.showSpeechBubble(`❤️ ${senderName} t'envoie un câlin !`, 3200);
+        } else if (kind === 'gift') {
+          this.soundManager.play('coin');
+          this.engine.addCoins(5);
+          this.animator.spawnParticles('sparkle', vx, vy - 20, 10);
+          this.showSpeechBubble(`🍎 ${senderName} t'offre une friandise (+5 🪙) !`, 3500);
+          this.refreshAllPanelsUI();
+          void this.persistSaveState();
+        } else if (kind === 'snowball') {
+          this.soundManager.play('snowball');
+          this.animator.spawnParticles('sparkle', this.petActor.x, this.petActor.y - 20, 14);
+          this.showSpeechBubble(`❄️ ${senderName} te lance une boule de neige !`, 3200);
+        } else {
+          this.soundManager.play('win');
+          this.animator.spawnParticles('confetti', this.petActor.x, this.petActor.y - 25, 16);
+          this.showSpeechBubble(`🎉 ${senderName} lance des confettis !`, 3200);
+        }
+      },
+      onFriendRps: (senderName, choice) => {
+        this.handleIncomingRoomRps(senderName, choice);
+      },
+    });
+
+    this.simonGame = new SimonGame(this.soundManager, {
+      onComplete: (score, maxScore, won) => {
+        this.handleMiniGameComplete({
+          gameId: 'simon_memory',
+          score,
+          maxScore,
+          won,
+        });
+      },
+      onCancel: () => {
+        this.hitTester?.refresh();
       },
     });
 
@@ -721,6 +781,40 @@ class DesktopPetRendererApp {
     this.ctx.clearRect(0, 0, window.innerWidth, window.innerHeight);
 
     const pet = this.engine.getState();
+
+    // Rendu des décorations de bureau posées par le joueur
+    if (Array.isArray(pet.placedDecorations) && pet.placedDecorations.length > 0) {
+      const groundY = this.petActor.getGroundY();
+      const hour = new Date().getHours();
+      const isNight = hour >= 20 || hour < 7;
+      for (let i = 0; i < pet.placedDecorations.length; i++) {
+        const placed = pet.placedDecorations[i];
+        const def = this.decorationsCatalog.find((d) => d.id === placed.id);
+        if (!def) continue;
+        const dx = Math.max(48, Math.min(window.innerWidth - 48, placed.x || 90 + i * 56));
+        const dy = groundY + 10;
+        this.ctx.save();
+        if (def.id === 'desk_lamp' && isNight) {
+          const glow = this.ctx.createRadialGradient(dx, dy - 16, 4, dx, dy - 16, 48);
+          glow.addColorStop(0, 'rgba(253, 224, 71, 0.35)');
+          glow.addColorStop(1, 'rgba(253, 224, 71, 0)');
+          this.ctx.fillStyle = glow;
+          this.ctx.beginPath();
+          this.ctx.arc(dx, dy - 16, 48, 0, Math.PI * 2);
+          this.ctx.fill();
+        }
+        this.ctx.fillStyle = 'rgba(0, 0, 0, 0.18)';
+        this.ctx.beginPath();
+        this.ctx.ellipse(dx, dy + 8, 16, 5, 0, 0, Math.PI * 2);
+        this.ctx.fill();
+        this.ctx.font = '28px "Segoe UI Emoji", "Apple Color Emoji", sans-serif';
+        this.ctx.textAlign = 'center';
+        this.ctx.textBaseline = 'middle';
+        this.ctx.fillText(def.emoji, dx, dy - 8);
+        this.ctx.restore();
+      }
+    }
+
     this.animator.render({
       ctx: this.ctx,
       formId: pet.formId,
@@ -1194,6 +1288,55 @@ class DesktopPetRendererApp {
       this.startBallThrowMode();
     });
 
+    // Interaction Mini-Jeu 🎵 Simon Musical
+    document.getElementById('btn-start-simon')?.addEventListener('click', () => {
+      if (!this.canStartMiniGame()) return;
+      this.hideHudPanel();
+      this.simonGame.start();
+    });
+
+    // Interactions sociales dans le Salon Online (Chat, Émotes, Duel PFC)
+    const sendRoomChat = () => {
+      const chatInput = document.getElementById('input-room-chat') as HTMLInputElement | null;
+      const msg = chatInput?.value.trim() ?? '';
+      if (!msg) return;
+      if (this.onlineManager.sendRoomChat(msg)) {
+        this.soundManager.play('emote');
+        this.showSpeechBubble(`💬 Moi : ${msg}`, 3500);
+        if (chatInput) chatInput.value = '';
+      }
+    };
+    document.getElementById('btn-send-room-chat')?.addEventListener('click', sendRoomChat);
+    document.getElementById('input-room-chat')?.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        sendRoomChat();
+      }
+    });
+
+    document.querySelectorAll<HTMLButtonElement>('.room-emote-btn').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        const kind = btn.dataset.emote as RoomEmoteKind | undefined;
+        if (!kind) return;
+        if (this.onlineManager.sendRoomEmote(kind)) {
+          this.soundManager.play(kind === 'snowball' ? 'snowball' : 'emote');
+          this.showSpeechBubble(`Émote envoyée au salon ! ✨`, 2000);
+        }
+      });
+    });
+
+    document.querySelectorAll<HTMLButtonElement>('.room-rps-btn').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        const choice = btn.dataset.choice as RoomRpsChoice | undefined;
+        if (!choice) return;
+        if (this.onlineManager.sendRoomRps(choice)) {
+          this.pendingMyRpsChoice = choice;
+          this.soundManager.play('click');
+          this.tryResolveRoomRps();
+        }
+      });
+    });
+
     document.getElementById('btn-cancel-ball')?.addEventListener('click', () => {
       this.cancelBallThrowMode();
     });
@@ -1289,6 +1432,16 @@ class DesktopPetRendererApp {
       this.petActor.setWindowJumpEnabled(enabled);
       if (!enabled) {
         this.showSpeechBubble("D'accord, je reste sur le bureau ! 🐾", 3000);
+      }
+    });
+
+    const soundInput = document.getElementById('toggle-sound') as HTMLInputElement | null;
+    soundInput?.addEventListener('change', () => {
+      const enabled = soundInput.checked;
+      this.soundManager.setEnabled(enabled);
+      this.updateUserSetting({ soundEnabled: enabled });
+      if (enabled) {
+        this.soundManager.play('pet');
       }
     });
 
@@ -1422,6 +1575,9 @@ class DesktopPetRendererApp {
 
     window.petAPI?.onActiveWindowChanged?.((windowInfo: ActiveWindowInfo | null) => {
       this.petActor.setActiveWindow(windowInfo);
+      if (windowInfo?.title) {
+        this.maybeReactToActiveApp(windowInfo.title);
+      }
       if (this.petActor.getIsPerchingOnWindow()) {
         this.renderFrame();
         this.updateFloatingPanelsPosition();
@@ -2939,6 +3095,89 @@ class DesktopPetRendererApp {
       }
     }
 
+    // Décorations de bureau (panier, gamelle, plante, lampe)
+    if (
+      (this.currentShopCategory === 'all' || this.currentShopCategory === 'decor') &&
+      this.currentShopTab === 'market'
+    ) {
+      const ownedDecor = pet.ownedDecorations ?? [];
+      const placedDecor = pet.placedDecorations ?? [];
+      for (const dec of this.decorationsCatalog) {
+        const isOwned = ownedDecor.includes(dec.id);
+        const isPlaced = placedDecor.some((p) => p.id === dec.id);
+
+        const card = document.createElement('div');
+        card.className = `shop-item-card ${isPlaced ? 'is-equipped' : isOwned ? 'owned' : ''}`;
+
+        const iconDiv = document.createElement('div');
+        iconDiv.className = 'shop-item-icon';
+        iconDiv.textContent = dec.emoji;
+
+        const nameDiv = document.createElement('div');
+        nameDiv.className = 'shop-item-name';
+        nameDiv.textContent = dec.name;
+
+        const descDiv = document.createElement('div');
+        descDiv.className = 'shop-item-desc';
+        descDiv.textContent = dec.description;
+
+        const actionsDiv = document.createElement('div');
+        actionsDiv.className = 'shop-item-actions';
+
+        const btn = document.createElement('button');
+        btn.type = 'button';
+        if (isOwned) {
+          btn.className = `shop-action-btn ${isPlaced ? 'buy' : 'equip'}`;
+          btn.textContent = isPlaced ? 'Retirer du bureau' : 'Poser sur le bureau';
+          btn.addEventListener('click', () => {
+            const idx = this.decorationsCatalog.indexOf(dec);
+            const nowPlaced = this.engine.toggleDecorationPlaced(
+              dec.id,
+              80 + idx * 58,
+              this.petActor.getGroundY()
+            );
+            this.soundManager.play('click');
+            this.showSpeechBubble(
+              nowPlaced ? `${dec.name} posé sur le bureau ! ${dec.emoji}` : `${dec.name} rangé.`,
+              2500
+            );
+            this.refreshShopUI();
+            this.renderFrame();
+            void this.persistSaveState();
+          });
+        } else {
+          btn.className = 'shop-action-btn buy';
+          btn.textContent = `🪙 ${dec.price} Acheter`;
+          if (pet.tamaCoins < dec.price) {
+            btn.disabled = true;
+          }
+          btn.addEventListener('click', () => {
+            const idx = this.decorationsCatalog.indexOf(dec);
+            const res = this.engine.buyDecoration(
+              dec,
+              80 + idx * 58,
+              this.petActor.getGroundY()
+            );
+            if (res.purchased) {
+              this.soundManager.play('coin');
+              this.animator.spawnParticles('confetti', this.petActor.x, this.petActor.y, 10);
+              this.showSpeechBubble(`Décoration posée : ${dec.name} ${dec.emoji} !`, 3000);
+              this.refreshShopUI();
+              this.renderFrame();
+              void this.persistSaveState();
+            }
+          });
+        }
+        actionsDiv.appendChild(btn);
+        card.appendChild(iconDiv);
+        card.appendChild(nameDiv);
+        card.appendChild(descDiv);
+        card.appendChild(actionsDiv);
+        this.shopItemsGridEl.appendChild(card);
+        totalCardsAdded++;
+      }
+    }
+
     if (totalCardsAdded === 0) {
       const emptyDiv = document.createElement('div');
       emptyDiv.className = 'shop-empty-state';
@@ -3040,6 +3279,11 @@ class DesktopPetRendererApp {
     const visitors = this.onlineManager.getVisitors();
     const roomCode = this.onlineManager.getCurrentRoomCode();
     const roomStatus = this.onlineManager.getRoomStatus();
+
+    const socialControls = document.getElementById('room-social-controls');
+    if (socialControls) {
+      socialControls.classList.toggle('hidden', !roomCode);
+    }
 
     const statusBadge = document.getElementById('online-status-badge');
     if (statusBadge) {
@@ -3244,6 +3488,8 @@ class DesktopPetRendererApp {
     setText('stat-cat-snack', String(pet.careStats.foodCategoryCounts.snack));
     setText('stat-cat-gourmet', String(pet.careStats.foodCategoryCounts.gourmet));
 
+    this.renderDailyQuests();
+
     // Rendu de la galerie Compendium (19 formes)
     const compendiumGrid = document.getElementById('compendium-grid');
     if (!compendiumGrid) {
@@ -3417,6 +3663,11 @@ class DesktopPetRendererApp {
     const windowJumpEl = document.getElementById('toggle-window-jump') as HTMLInputElement | null;
     if (windowJumpEl) {
       windowJumpEl.checked = settings.windowJumpEnabled ?? true;
+    }
+
+    const soundEl = document.getElementById('toggle-sound') as HTMLInputElement | null;
+    if (soundEl) {
+      soundEl.checked = settings.soundEnabled ?? true;
     }
 
     const nameInputEl = document.getElementById('input-pet-name') as HTMLInputElement | null;
@@ -3886,6 +4137,173 @@ class DesktopPetRendererApp {
         this.showSpeechBubble("Aucune évolution ultérieure pour cette forme !", 3000);
       }
     });
+  }
+
+  private async fetchWeatherMood(): Promise<void> {
+    try {
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), 3500);
+      const res = await fetch('https://wttr.in/?format=%C', { signal: controller.signal });
+      clearTimeout(timeout);
+      if (!res.ok) return;
+      const cond = (await res.text()).toLowerCase();
+      if (cond.includes('rain') || cond.includes('drizzle') || cond.includes('shower') || cond.includes('pluie')) {
+        this.weatherMood = 'rain';
+      } else if (cond.includes('snow') || cond.includes('neige')) {
+        this.weatherMood = 'snow';
+      } else {
+        this.weatherMood = 'clear';
+      }
+      if (this.weatherMood === 'rain') {
+        this.showSpeechBubble("Il pleut dehors ! Je garde mon petit parapluie au chaud ☔", 3800);
+      } else if (this.weatherMood === 'snow') {
+        this.showSpeechBubble("Il neige ! Brrr, faisons une bataille de boules de neige ❄️", 3800);
+      }
+    } catch {
+      // Silencieux hors-ligne
+    }
+  }
+
+  private maybeReactToActiveApp(rawTitle: string): void {
+    const now = Date.now();
+    if (now - this.lastAppReactionAt < 180_000) return;
+    const title = rawTitle.toLowerCase();
+    let key = '';
+    let msg = '';
+    let prop: DialoguePropType | undefined;
+
+    if (title.includes('visual studio code') || title.includes('vscode') || title.includes('cursor')) {
+      key = 'code';
+      msg = 'Ça code dur par ici ! Besoin d’un café ? 💻☕';
+      prop = 'coffee_cup';
+    } else if (title.includes('youtube') || title.includes('netflix') || title.includes('twitch')) {
+      key = 'video';
+      msg = 'Pause vidéo ? Je m’installe avec toi ! 🍿✨';
+      this.animator.spawnParticles('sparkle', this.petActor.x, this.petActor.y - 16, 6);
+    } else if (title.includes('discord')) {
+      key = 'discord';
+      msg = 'Tu discutes avec les amis ? Passe-leur le bonjour ! 💬';
+      this.animator.spawnParticles('heart', this.petActor.x, this.petActor.y - 16, 5);
+    } else if (title.includes('spotify')) {
+      key = 'spotify';
+      msg = 'Bonne playlist ! Je danse en rythme 🎵';
+      this.animator.spawnParticles('music', this.petActor.x, this.petActor.y - 16, 6);
+    }
+
+    if (!key || key === this.lastReactedAppKey) return;
+    this.lastReactedAppKey = key;
+    this.lastAppReactionAt = now;
+    if (prop) {
+      this.animator.spawnDialogueProp(prop, 2600);
+    }
+    this.showSpeechBubble(msg, 3600);
+  }
+
+  private handleIncomingRoomRps(senderName: string, choice: RoomRpsChoice): void {
+    this.pendingFriendRps = { name: senderName, choice };
+    if (!this.pendingMyRpsChoice) {
+      this.soundManager.play('emote');
+      this.showSpeechBubble(
+        `⚡ ${senderName} te défie au Pierre-Feuille-Ciseaux ! Choisis ton coup dans Online !`,
+        4500
+      );
+      return;
+    }
+    this.tryResolveRoomRps();
+  }
+
+  private tryResolveRoomRps(): void {
+    if (!this.pendingMyRpsChoice) return;
+    if (!this.pendingFriendRps) {
+      this.showSpeechBubble('Coup envoyé ! En attente de la réponse de ton ami… ✊✋✌️', 3000);
+      return;
+    }
+    const mine = this.pendingMyRpsChoice;
+    const friend = this.pendingFriendRps;
+    this.pendingMyRpsChoice = null;
+    this.pendingFriendRps = null;
+
+    const icons: Record<RoomRpsChoice, string> = {
+      rock: '✊',
+      paper: '✋',
+      scissors: '✌️',
+    };
+    if (mine === friend.choice) {
+      this.soundManager.play('click');
+      this.showSpeechBubble(
+        `Égalité contre ${friend.name} (${icons[mine]} vs ${icons[friend.choice]}) ! 🤝`,
+        4000
+      );
+    } else if (
+      (mine === 'rock' && friend.choice === 'scissors') ||
+      (mine === 'paper' && friend.choice === 'rock') ||
+      (mine === 'scissors' && friend.choice === 'paper')
+    ) {
+      this.soundManager.play('win');
+      this.engine.addCoins(15);
+      this.animator.spawnParticles('confetti', this.petActor.x, this.petActor.y, 12);
+      this.showSpeechBubble(
+        `Victoire contre ${friend.name} (${icons[mine]} bat ${icons[friend.choice]}) ! +15 🪙 🎉`,
+        4500
+      );
+      this.refreshAllPanelsUI();
+      void this.persistSaveState();
+    } else {
+      this.soundManager.play('lose');
+      this.showSpeechBubble(
+        `${friend.name} gagne cette manche (${icons[friend.choice]} bat ${icons[mine]}) ! 😅`,
+        4000
+      );
+    }
+  }
+
+  private renderDailyQuests(): void {
+    const listEl = document.getElementById('daily-quests-list');
+    if (!listEl) return;
+    const state = this.engine.getDailyQuests(Date.now());
+    listEl.innerHTML = '';
+
+    for (const q of state.quests) {
+      const row = document.createElement('div');
+      row.className = 'quest-row';
+
+      const info = document.createElement('div');
+      info.className = 'quest-info';
+      const title = document.createElement('strong');
+      title.textContent = q.title;
+      const prog = document.createElement('small');
+      prog.textContent = `Progression : ${q.progress} / ${q.target} • Récompense : +${q.rewardCoins} 🪙`;
+      info.appendChild(title);
+      info.appendChild(prog);
+
+      const btn = document.createElement('button');
+      btn.type = 'button';
+      btn.className = q.claimed ? 'secondary-btn' : q.progress >= q.target ? 'action-btn-highlight' : 'secondary-btn';
+      if (q.claimed) {
+        btn.textContent = '✓ Réclamé';
+        btn.disabled = true;
+      } else if (q.progress >= q.target) {
+        btn.textContent = `🎁 +${q.rewardCoins} 🪙`;
+        btn.addEventListener('click', () => {
+          const res = this.engine.claimDailyQuest(q.id, Date.now());
+          if (res.claimed) {
+            this.soundManager.play('coin');
+            this.animator.spawnParticles('confetti', this.petActor.x, this.petActor.y, 10);
+            this.showSpeechBubble(`Défi terminé ! +${res.coinsEarned} 🪙 🎉`, 3000);
+            this.refreshAllPanelsUI();
+            this.renderDailyQuests();
+            void this.persistSaveState();
+          }
+        });
+      } else {
+        btn.textContent = `${q.progress}/${q.target}`;
+        btn.disabled = true;
+      }
+
+      row.appendChild(info);
+      row.appendChild(btn);
+      listEl.appendChild(row);
+    }
   }
 
   private async persistSaveState(): Promise<void> {

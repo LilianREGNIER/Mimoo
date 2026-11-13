@@ -24,6 +24,11 @@ import { clampPetPositionToWorkArea } from './displayUtils';
 import { evaluateEvolution } from './evolutionSystem';
 import { applyTickNeeds, getCriticalNeeds } from './needsSystem';
 import {
+  advanceDailyQuest,
+  claimDailyQuestReward,
+  ensureDailyQuests,
+} from './questsSystem';
+import {
   createInitialSaveData,
   FORM_TO_LINEAGE,
   FORM_TO_STAGE,
@@ -32,6 +37,8 @@ import { computeOfflineCatchup } from './timeSystem';
 import type {
   CosmeticItem,
   CosmeticSlot,
+  DailyQuestsState,
+  DecorationItem,
   FoodItem,
   FormId,
   FriendPetProfile,
@@ -354,7 +361,10 @@ export class PetEngine {
     }
 
     const evoResult = evaluateEvolution(feedResult.pet, this.species);
-    this.saveData.pet = evoResult.pet;
+    this.saveData.pet = {
+      ...evoResult.pet,
+      dailyQuests: advanceDailyQuest(evoResult.pet.dailyQuests, 'feed', 1, nowMs),
+    };
     if (typeof nowMs === 'number' && Number.isFinite(nowMs)) {
       this.saveData.savedAt = nowMs;
     }
@@ -377,7 +387,10 @@ export class PetEngine {
   } {
     const result = petCharacter(this.saveData.pet, this.config, nowMs);
     const evoResult = evaluateEvolution(result.pet, this.species);
-    this.saveData.pet = evoResult.pet;
+    this.saveData.pet = {
+      ...evoResult.pet,
+      dailyQuests: advanceDailyQuest(evoResult.pet.dailyQuests, 'pet', 1, nowMs),
+    };
     this.saveData.savedAt = nowMs;
 
     return {
@@ -409,7 +422,12 @@ export class PetEngine {
   public clean(nowMs?: number): { pet: PetState; cleaned: boolean } {
     const result = cleanPet(this.saveData.pet, this.config, nowMs);
     const evoResult = evaluateEvolution(result.pet, this.species);
-    this.saveData.pet = evoResult.pet;
+    this.saveData.pet = {
+      ...evoResult.pet,
+      dailyQuests: result.cleaned
+        ? advanceDailyQuest(evoResult.pet.dailyQuests, 'clean', 1, nowMs)
+        : ensureDailyQuests(evoResult.pet.dailyQuests, nowMs),
+    };
     this.poopSecondsAccumulator = 0;
     if (typeof nowMs === 'number' && Number.isFinite(nowMs)) {
       this.saveData.savedAt = nowMs;
@@ -442,7 +460,10 @@ export class PetEngine {
     if (result.completed) {
       this.poopSecondsAccumulator = 0;
       const evoResult = evaluateEvolution(result.pet, this.species);
-      this.saveData.pet = evoResult.pet;
+      this.saveData.pet = {
+        ...evoResult.pet,
+        dailyQuests: advanceDailyQuest(evoResult.pet.dailyQuests, 'clean', 1, nowMs),
+      };
     } else {
       this.saveData.pet = result.pet;
     }
@@ -883,7 +904,10 @@ export class PetEngine {
   } {
     const gameOutcome = applyMiniGameResult(this.saveData.pet, result, nowMs);
     const evoResult = evaluateEvolution(gameOutcome.pet, this.species);
-    this.saveData.pet = evoResult.pet;
+    this.saveData.pet = {
+      ...evoResult.pet,
+      dailyQuests: advanceDailyQuest(evoResult.pet.dailyQuests, 'play', 1, nowMs),
+    };
     if (typeof nowMs === 'number' && Number.isFinite(nowMs)) {
       this.saveData.savedAt = nowMs;
     }
@@ -1199,6 +1223,73 @@ export class PetEngine {
       ...partial,
     };
     return { ...this.saveData.settings };
+  }
+
+  public getDailyQuests(nowMs: number = Date.now()): DailyQuestsState {
+    const ensured = ensureDailyQuests(this.saveData.pet.dailyQuests, nowMs);
+    this.saveData.pet.dailyQuests = ensured;
+    return ensured;
+  }
+
+  public claimDailyQuest(
+    questId: string,
+    nowMs: number = Date.now()
+  ): { claimed: boolean; coinsEarned: number; dailyQuests: DailyQuestsState } {
+    const res = claimDailyQuestReward(this.saveData.pet.dailyQuests, questId, nowMs);
+    this.saveData.pet.dailyQuests = res.state;
+    if (res.claimed && res.coinsEarned > 0) {
+      this.saveData.pet.tamaCoins = (this.saveData.pet.tamaCoins ?? 0) + res.coinsEarned;
+    }
+    return { claimed: res.claimed, coinsEarned: res.coinsEarned, dailyQuests: res.state };
+  }
+
+  public recordPomodoroQuest(nowMs: number = Date.now()): void {
+    this.saveData.pet.dailyQuests = advanceDailyQuest(
+      this.saveData.pet.dailyQuests,
+      'pomodoro',
+      1,
+      nowMs
+    );
+  }
+
+  public buyDecoration(
+    item: DecorationItem,
+    defaultX: number,
+    defaultY: number
+  ): { purchased: boolean; reason?: 'already_owned' | 'insufficient_coins' } {
+    const owned = this.saveData.pet.ownedDecorations ?? [];
+    if (owned.includes(item.id)) {
+      return { purchased: false, reason: 'already_owned' };
+    }
+    const coins = this.saveData.pet.tamaCoins ?? 0;
+    if (coins < item.price) {
+      return { purchased: false, reason: 'insufficient_coins' };
+    }
+    this.saveData.pet.tamaCoins = coins - item.price;
+    this.saveData.pet.ownedDecorations = [...owned, item.id];
+    const placed = this.saveData.pet.placedDecorations ?? [];
+    this.saveData.pet.placedDecorations = [...placed, { id: item.id, x: defaultX, y: defaultY }];
+    return { purchased: true };
+  }
+
+  public toggleDecorationPlaced(itemId: string, defaultX: number, defaultY: number): boolean {
+    const owned = this.saveData.pet.ownedDecorations ?? [];
+    if (!owned.includes(itemId)) return false;
+    const placed = this.saveData.pet.placedDecorations ?? [];
+    const exists = placed.some((d) => d.id === itemId);
+    if (exists) {
+      this.saveData.pet.placedDecorations = placed.filter((d) => d.id !== itemId);
+      return false;
+    }
+    this.saveData.pet.placedDecorations = [...placed, { id: itemId, x: defaultX, y: defaultY }];
+    return true;
+  }
+
+  public updateDecorationPosition(itemId: string, x: number, y: number): void {
+    const placed = this.saveData.pet.placedDecorations ?? [];
+    this.saveData.pet.placedDecorations = placed.map((d) =>
+      d.id === itemId ? { ...d, x, y } : d
+    );
   }
 
   /**

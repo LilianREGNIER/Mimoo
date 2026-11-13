@@ -11,11 +11,17 @@ import type { FormId, FriendPetProfile, LineageId, StageId } from '../core/types
 import { MqttRoomClient, type RoomTransportStatus } from './mqttRoomClient';
 import { SPRITE_FRAME_WIDTH } from './spriteAnimator';
 
+export type RoomEmoteKind = 'heart' | 'gift' | 'snowball' | 'confetti';
+export type RoomRpsChoice = 'rock' | 'paper' | 'scissors';
+
 export interface OnlineManagerCallbacks {
   onFriendArrival: (friend: FriendPetProfile) => void;
   onFriendDeparture: (friend?: FriendPetProfile) => void;
   onPlayTogetherRequested: () => void;
   onRoomStatusChanged?: (status: RoomTransportStatus, roomCode: string | null) => void;
+  onFriendChat?: (senderName: string, message: string, visitor?: FriendVisitorRuntime) => void;
+  onFriendEmote?: (senderName: string, kind: RoomEmoteKind, visitor?: FriendVisitorRuntime) => void;
+  onFriendRps?: (senderName: string, choice: RoomRpsChoice, visitor?: FriendVisitorRuntime) => void;
 }
 
 export interface FriendVisitorRuntime {
@@ -265,6 +271,53 @@ export class OnlineManager {
         if (typeof data.senderId === 'string' && data.senderId !== this.localProfile?.id) {
           this.removeVisitor(data.senderId);
         }
+      } else if (data.type === 'chat') {
+        if (
+          typeof data.senderId === 'string' &&
+          data.senderId !== this.localProfile?.id &&
+          typeof data.message === 'string'
+        ) {
+          const visitor = this.visitors.get(data.senderId);
+          const senderName =
+            typeof data.senderName === 'string'
+              ? data.senderName
+              : visitor?.profile.name ?? 'Ami';
+          this.callbacks.onFriendChat?.(senderName, data.message.slice(0, 120), visitor);
+        }
+      } else if (data.type === 'emote') {
+        if (
+          typeof data.senderId === 'string' &&
+          data.senderId !== this.localProfile?.id &&
+          typeof data.kind === 'string'
+        ) {
+          const visitor = this.visitors.get(data.senderId);
+          const senderName =
+            typeof data.senderName === 'string'
+              ? data.senderName
+              : visitor?.profile.name ?? 'Ami';
+          this.callbacks.onFriendEmote?.(
+            senderName,
+            data.kind as RoomEmoteKind,
+            visitor
+          );
+        }
+      } else if (data.type === 'rps') {
+        if (
+          typeof data.senderId === 'string' &&
+          data.senderId !== this.localProfile?.id &&
+          typeof data.choice === 'string'
+        ) {
+          const visitor = this.visitors.get(data.senderId);
+          const senderName =
+            typeof data.senderName === 'string'
+              ? data.senderName
+              : visitor?.profile.name ?? 'Ami';
+          this.callbacks.onFriendRps?.(
+            senderName,
+            data.choice as RoomRpsChoice,
+            visitor
+          );
+        }
       }
     };
 
@@ -352,6 +405,40 @@ export class OnlineManager {
       });
     }
     this.callbacks.onPlayTogetherRequested();
+  }
+
+  public sendRoomChat(message: string): boolean {
+    const clean = message.trim().slice(0, 120);
+    if (!clean || !this.currentRoomCode || !this.localProfile) return false;
+    this.publishRoomMessage({
+      type: 'chat',
+      senderId: this.localProfile.id,
+      senderName: this.localProfile.name,
+      message: clean,
+    });
+    return true;
+  }
+
+  public sendRoomEmote(kind: RoomEmoteKind): boolean {
+    if (!this.currentRoomCode || !this.localProfile) return false;
+    this.publishRoomMessage({
+      type: 'emote',
+      senderId: this.localProfile.id,
+      senderName: this.localProfile.name,
+      kind,
+    });
+    return true;
+  }
+
+  public sendRoomRps(choice: RoomRpsChoice): boolean {
+    if (!this.currentRoomCode || !this.localProfile) return false;
+    this.publishRoomMessage({
+      type: 'rps',
+      senderId: this.localProfile.id,
+      senderName: this.localProfile.name,
+      choice,
+    });
+    return true;
   }
 
   public leaveRoom(myId?: string): void {
