@@ -44,7 +44,7 @@ async function packageDualEditions() {
     cleanupDevMarker();
 
     runCommand('npm run build', 'Compilation TypeScript, Vite & Assets (Standard)');
-    runCommand('npx electron-builder --win --x64', 'Empaquetage NSIS & Portable (Standard)');
+    runCommand('npx electron-builder --win --x64 --publish never', 'Empaquetage NSIS & Portable (Standard)');
 
     // -------------------------------------------------------------
     // 2) ÉDITION DÉVELOPPEUR / SPÉCIALE (Menu Test, F2, 19 formes, simulations)
@@ -59,7 +59,7 @@ async function packageDualEditions() {
 
     runCommand('npm run build', 'Recompilation avec le marqueur Dev Edition');
     runCommand(
-      'npx electron-builder --win --x64 -c.productName="Mimoo (Dev Edition)" -c.appId="com.mimoo.desktoppet.devedition"',
+      'npx electron-builder --win --x64 --publish never -c.productName="Mimoo (Dev Edition)" -c.appId="com.mimoo.desktoppet.devedition"',
       'Empaquetage NSIS & Portable (Dev Edition)'
     );
 
