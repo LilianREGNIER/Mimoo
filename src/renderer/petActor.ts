@@ -87,6 +87,7 @@ export class PetActor {
   private lastWiggleDirection = 0;
   private wiggleCounter = 0;
   private lastWiggleTimestamp = 0;
+  private lastWiggleTriggeredAt = 0;
 
   // Suivi souris (Drag & Drop + Étirement / Rebond réaliste)
   private pointerDown = false;
@@ -111,6 +112,7 @@ export class PetActor {
   // Caresse par frottement (mouvement réel de va-et-vient requis)
   private caressStrokeCount = 0;
   private lastCaressDirection = 0;
+  private lastCaressDirectionY = 0;
   private lastCaressTimestamp = 0;
   private caressDistanceAccumulator = 0;
   private spongeDistanceAccumulator = 0;
@@ -527,18 +529,21 @@ export class PetActor {
 
         // Dynamique d'étirement élastique et organique (type gelée / mochi) :
         if (speed > 80) {
-          const targetStretchY = 1.0 + Math.min(0.42, speed * 0.00035);
-          const targetStretchX = Math.max(0.65, 1.0 / targetStretchY);
-          const targetAngle = Math.max(-0.38, Math.min(0.38, -cursorVx * 0.0003));
+          const horizFactor = Math.min(0.22, Math.abs(cursorVx) * 0.0002);
+          const vertFactor = Math.min(0.24, Math.abs(cursorVy) * 0.00022);
+          const targetStretchX = Math.max(0.72, Math.min(1.28, 1.0 + horizFactor - vertFactor * 0.65));
+          const targetStretchY = Math.max(0.72, Math.min(1.28, 1.0 + vertFactor - horizFactor * 0.65));
+          // En Canvas 2D, un angle positif incline le haut vers la droite et fait traîner le bas vers la gauche
+          const targetAngle = Math.max(-0.32, Math.min(0.32, cursorVx * 0.00028));
           this.dragStretchY += (targetStretchY - this.dragStretchY) * 0.35;
           this.dragStretchX += (targetStretchX - this.dragStretchX) * 0.35;
           this.dragAngle += (targetAngle - this.dragAngle) * 0.35;
         } else {
           // Suspendu presque immobile dans les airs : petit balancement mignon
           this.dangleTimer += 0.09;
-          const dangleSway = Math.sin(this.dangleTimer * 4.5) * 0.09;
-          const targetStretchY = 1.15;
-          const targetStretchX = 0.88;
+          const dangleSway = Math.sin(this.dangleTimer * 4.5) * 0.06;
+          const targetStretchY = 1.08;
+          const targetStretchX = 0.94;
           this.dragStretchY += (targetStretchY - this.dragStretchY) * 0.18;
           this.dragStretchX += (targetStretchX - this.dragStretchX) * 0.18;
           this.dragAngle += (dangleSway - this.dragAngle) * 0.22;
@@ -575,20 +580,37 @@ export class PetActor {
     this.isHovering = hoveringNow;
 
     // Détection de la vraie caresse au curseur :
-    // Nécessite un véritable mouvement de va-et-vient répété (au moins 3 changements de sens doux)
-    if (hoveringNow && !this.pointerDown) {
+    // Nécessite un va-et-vient horizontal, vertical ou diagonal (avec tolérance si on sort un peu du cadre)
+    const distToCursorForCaress = Math.hypot(clientX - this.x, clientY - this.y);
+    const totalScale = Math.max(0.75, this.speciesScale * this.userScale);
+    const isCaressZone =
+      hoveringNow ||
+      ((this.caressStrokeCount > 0 || this.caressDistanceAccumulator > 0) &&
+        distToCursorForCaress <= 72 * totalScale);
+
+    if (isCaressZone && !this.pointerDown) {
       const now = performance.now();
       const stepDist = Math.hypot(dx, dy);
 
-      if (stepDist >= 1.2 && stepDist <= 32) {
+      if (stepDist >= 1.2 && stepDist <= 38) {
         if (Math.abs(dx) >= 2.5) {
-          const currentDir = Math.sign(dx);
-          if (currentDir !== this.lastCaressDirection && this.lastCaressDirection !== 0) {
+          const currentDirX = Math.sign(dx);
+          if (currentDirX !== this.lastCaressDirection && this.lastCaressDirection !== 0) {
             if (now - this.lastCaressTimestamp < 1200) {
               this.caressStrokeCount++;
             }
           }
-          this.lastCaressDirection = currentDir;
+          this.lastCaressDirection = currentDirX;
+          this.lastCaressTimestamp = now;
+        }
+        if (Math.abs(dy) >= 2.5) {
+          const currentDirY = Math.sign(dy);
+          if (currentDirY !== this.lastCaressDirectionY && this.lastCaressDirectionY !== 0) {
+            if (now - this.lastCaressTimestamp < 1200) {
+              this.caressStrokeCount++;
+            }
+          }
+          this.lastCaressDirectionY = currentDirY;
           this.lastCaressTimestamp = now;
         }
 
@@ -599,7 +621,7 @@ export class PetActor {
 
         this.caressDistanceAccumulator += stepDist;
 
-        if (this.caressStrokeCount >= 3 && this.caressDistanceAccumulator >= 190) {
+        if (this.caressStrokeCount >= 3 && this.caressDistanceAccumulator >= 160) {
           this.caressStrokeCount = 0;
           this.caressDistanceAccumulator = 0;
           this.callbacks.onPetRub(this.x, this.y);
@@ -608,16 +630,25 @@ export class PetActor {
     }
 
     // Détection d'agitation ludique du curseur devant le familier (Wiggle)
+    // Uniquement à l'extérieur du corps du familier (sinon les caresses déclenchent aussi le wiggle)
     const distToCursor = Math.hypot(clientX - this.x, clientY - this.y);
-    if (distToCursor < 140 && !this.pointerDown && !this.hasActiveDemand && !this.isSleepingState) {
+    if (hoveringNow || isCaressZone) {
+      this.wiggleCounter = 0;
+      this.lastWiggleDirection = 0;
+    } else if (distToCursor < 140 && !this.pointerDown && !this.hasActiveDemand && !this.isSleepingState) {
       const now = performance.now();
-      if (Math.abs(dx) > 3.5) {
+      if (
+        now - this.lastCaressTimestamp >= 1500 &&
+        now - this.lastWiggleTriggeredAt >= 6000 &&
+        Math.abs(dx) > 3.5
+      ) {
         const wiggleDir = Math.sign(dx);
         if (wiggleDir !== this.lastWiggleDirection && this.lastWiggleDirection !== 0) {
           if (now - this.lastWiggleTimestamp < 450) {
             this.wiggleCounter++;
             if (this.wiggleCounter >= 3) {
               this.wiggleCounter = 0;
+              this.lastWiggleTriggeredAt = now;
               this.vy = -160;
               this.callbacks.onCursorWiggleExcited?.();
             }
@@ -972,13 +1003,22 @@ export class PetActor {
     // 5) Si le familier rapporte la balle au joueur
     if (this.isCarryingBall) {
       const sprintSpeed = Math.max(100, this.walkSpeed * 1.85);
+      const hasMousePos = this.lastMouseX > 0 || this.lastMouseY > 0;
       const returnTargetX =
-        this.lastMouseX > 40 && this.lastMouseX < window.innerWidth - 40
+        hasMousePos && this.lastMouseX > 40 && this.lastMouseX < window.innerWidth - 40
           ? this.lastMouseX
           : window.innerWidth * 0.5;
       const diffX = returnTargetX - this.x;
       const absDiff = Math.abs(diffX);
-      if (absDiff <= 28) {
+      const totalScale = Math.max(0.75, this.speciesScale * this.userScale);
+      const touchRadiusX = 32 * totalScale;
+      const touchRadiusY = 40 * totalScale;
+      const isMouseTouchingPet =
+        hasMousePos &&
+        Math.abs(this.lastMouseX - this.x) <= touchRadiusX &&
+        Math.abs(this.lastMouseY - this.y) <= touchRadiusY;
+
+      if (isMouseTouchingPet) {
         this.isCarryingBall = false;
         this.isMoving = false;
         this.targetX = null;
@@ -986,6 +1026,13 @@ export class PetActor {
         this.callbacks.onBallReturned?.();
         return;
       }
+
+      if (absDiff <= 10) {
+        // Arrivé sous le curseur : attend que la souris descende réellement toucher le familier
+        this.isMoving = false;
+        return;
+      }
+
       const dir = Math.sign(diffX);
       if (dir !== 0) {
         this.flipX = dir < 0;
@@ -1034,16 +1081,17 @@ export class PetActor {
         this.targetX = null;
         this.isMoving = false;
         if (this.microStepRemaining > 0) {
-          this.aiPauseTimer = 0.5 + Math.random() * 0.8;
+          this.aiPauseTimer = 0.4 + Math.random() * 0.6;
         } else {
-          this.aiPauseTimer = 1.8 + Math.random() * 3.2;
+          this.aiPauseTimer = 1.1 + Math.random() * 1.9;
         }
         this.callbacks.onPositionChanged(this.x, this.y);
       } else {
         const dir = Math.sign(diffX);
         this.flipX = dir < 0;
         this.isMoving = true;
-        const step = Math.min(absDiff, this.walkSpeed * safeDt);
+        const effectiveSpeed = Math.max(48, this.walkSpeed);
+        const step = Math.min(absDiff, effectiveSpeed * safeDt);
         this.x = this.clampX(this.x + dir * step);
       }
       return;
@@ -1058,7 +1106,7 @@ export class PetActor {
       }
     }
 
-    // Décompte avant la prochaine action de marche autonome
+    // Décompte avant la prochaine action de marche ou saut autonome
     this.aiPauseTimer -= safeDt;
     if (this.aiPauseTimer <= 0) {
       const margin = this.getHorizontalMargin();
@@ -1067,40 +1115,47 @@ export class PetActor {
 
       if (this.microStepRemaining > 0) {
         this.microStepRemaining--;
-        if (Math.random() < 0.4) {
+        if (Math.random() < 0.35) {
           this.lastWanderDir = -this.lastWanderDir;
         }
-        const stepDist = 18 + Math.random() * 38;
+        const stepDist = 45 + Math.random() * 65;
         this.targetX = this.clampX(this.x + this.lastWanderDir * stepDist);
-        this.aiPauseTimer = 0.6 + Math.random() * 0.9;
+        this.aiPauseTimer = 0.5 + Math.random() * 0.7;
         return;
       }
 
       const roll = Math.random();
 
-      if (roll < 0.45) {
-        this.microStepRemaining = 1 + Math.floor(Math.random() * 3);
+      if (roll < 0.22 && !this.isPerchingOnWindow && !this.isJumpingToWindow) {
+        // Petit saut joyeux autonome sur le bureau
+        const jumpDir = Math.random() < 0.5 ? -1 : 1;
+        this.flipX = jumpDir < 0;
+        this.lastWanderDir = jumpDir;
+        this.vx = jumpDir * (65 + Math.random() * 75);
+        this.vy = -(260 + Math.random() * 110);
+        this.isAirborne = true;
+        this.isMoving = false;
+        this.targetX = null;
+        this.aiPauseTimer = 1.4 + Math.random() * 1.6;
+      } else if (roll < 0.52) {
+        this.microStepRemaining = 1 + Math.floor(Math.random() * 2);
         this.lastWanderDir = Math.random() < 0.5 ? -1 : 1;
-        const stepDist = 18 + Math.random() * 32;
+        const stepDist = 55 + Math.random() * 75;
         this.targetX = this.clampX(this.x + this.lastWanderDir * stepDist);
-        this.aiPauseTimer = 0.7 + Math.random() * 0.8;
-      } else if (roll < 0.75) {
+        this.aiPauseTimer = 0.6 + Math.random() * 0.7;
+      } else if (roll < 0.85) {
         const dir = Math.random() < 0.5 ? -1 : 1;
         this.lastWanderDir = dir;
-        const dist = 60 + Math.random() * 110;
+        const dist = 110 + Math.random() * 180;
         this.targetX = this.clampX(this.x + dir * dist);
-        this.aiPauseTimer = 2.0 + Math.random() * 2.5;
-      } else if (roll < 0.88) {
+        this.aiPauseTimer = 1.6 + Math.random() * 1.8;
+      } else {
         const target =
           this.x > (minX + maxX) / 2
             ? minX + Math.random() * ((maxX - minX) * 0.4)
             : maxX - Math.random() * ((maxX - minX) * 0.4);
         this.targetX = this.clampX(target);
-        this.aiPauseTimer = 3.5 + Math.random() * 3.5;
-      } else {
-        this.flipX = !this.flipX;
-        this.targetX = null;
-        this.aiPauseTimer = 1.5 + Math.random() * 2.0;
+        this.aiPauseTimer = 2.0 + Math.random() * 2.2;
       }
     }
   }
@@ -1113,12 +1168,12 @@ export class PetActor {
     const margin = this.getHorizontalMargin();
     const min = margin;
     const max = Math.max(margin, window.innerWidth - margin);
-    return Math.min(max, Math.max(min, Math.round(val)));
+    return Math.min(max, Math.max(min, val));
   }
 
   private clampY(val: number): number {
     const margin = Math.max(48, Math.round(this.getDrawSize() * 0.5));
     const max = this.getGroundY();
-    return Math.min(max, Math.max(margin, Math.round(val)));
+    return Math.min(max, Math.max(margin, val));
   }
 }

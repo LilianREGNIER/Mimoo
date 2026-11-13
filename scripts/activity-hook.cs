@@ -49,6 +49,9 @@ class Program {
     private static int heartbeatTick = 0;
     private static int musicSilenceCounter = 0;
     private static int cachedShadowMargin = 7;
+    private static readonly object emitLock = new object();
+    private static IntPtr cachedProcessHwnd = IntPtr.Zero;
+    private static string cachedProcessName = "";
 
     private delegate IntPtr LowLevelProc(int nCode, IntPtr wParam, IntPtr lParam);
     private static LowLevelProc mouseProc = MouseHookCallback;
@@ -67,17 +70,16 @@ class Program {
     private static IAudioMeterInformation audioMeter = null;
 
     private static void EmitWindowIfChanged(bool force = false) {
-        long now = emitStopwatch.ElapsedMilliseconds;
-        if (!force && (now - lastEmitTimestamp < 4)) {
-            return;
-        }
-        string wJson = GetForegroundWindowJson();
-        if (wJson != "null" && wJson != lastWindowJson) {
-            lastWindowJson = wJson;
-            lastValidWindowJson = wJson;
-            lastEmitTimestamp = now;
-            Console.WriteLine("{\"window\":" + wJson + "}");
-            Console.Out.Flush();
+        lock (emitLock) {
+            long now = emitStopwatch.ElapsedMilliseconds;
+            string wJson = GetForegroundWindowJson();
+            if (wJson != "null" && wJson != lastWindowJson) {
+                lastWindowJson = wJson;
+                lastValidWindowJson = wJson;
+                lastEmitTimestamp = now;
+                Console.WriteLine("{\"window\":" + wJson + "}");
+                Console.Out.Flush();
+            }
         }
     }
 
@@ -160,6 +162,9 @@ class Program {
 
     [DllImport("user32.dll", CharSet = CharSet.Auto, SetLastError = true)]
     private static extern int GetWindowText(IntPtr hWnd, StringBuilder lpString, int nMaxCount);
+
+    [DllImport("user32.dll", SetLastError = true)]
+    private static extern uint GetWindowThreadProcessId(IntPtr hWnd, out uint lpdwProcessId);
 
     [DllImport("user32.dll")]
     private static extern bool EnumWindows(EnumWindowsProc lpEnumFunc, IntPtr lParam);
@@ -270,10 +275,27 @@ class Program {
                 GetWindowText(fg, sb, 256);
                 string rawTitle = sb.ToString().Trim();
 
-                bool isOwnApp = rawTitle.IndexOf("Tamagotchi", StringComparison.OrdinalIgnoreCase) >= 0;
+                bool isOwnApp =
+                    rawTitle.IndexOf("Tamagotchi", StringComparison.OrdinalIgnoreCase) >= 0 ||
+                    rawTitle.IndexOf("Mimoo", StringComparison.OrdinalIgnoreCase) >= 0;
                 bool isSystem = rawTitle == "Program Manager" || rawTitle == "Desktop" || string.IsNullOrEmpty(rawTitle);
 
                 if (!isOwnApp && !isSystem) {
+                    if (fg != cachedProcessHwnd) {
+                        cachedProcessHwnd = fg;
+                        cachedProcessName = "";
+                        try {
+                            uint pid = 0;
+                            GetWindowThreadProcessId(fg, out pid);
+                            if (pid != 0) {
+                                using (Process p = Process.GetProcessById((int)pid)) {
+                                    cachedProcessName = p.ProcessName ?? "";
+                                }
+                            }
+                        } catch {
+                            cachedProcessName = "";
+                        }
+                    }
                     RECT r = new RECT();
                     if (!GetWindowRect(fg, out r)) return lastValidWindowJson;
 
@@ -314,10 +336,15 @@ class Program {
                             .Replace("\"", "\\\"")
                             .Replace("\r", "")
                             .Replace("\n", "");
+                        string safeProc = cachedProcessName
+                            .Replace("\\", "\\\\")
+                            .Replace("\"", "\\\"")
+                            .Replace("\r", "")
+                            .Replace("\n", "");
 
                         return string.Format(
-                            "{{\"title\":\"{0}\",\"x\":{1},\"y\":{2},\"width\":{3},\"height\":{4}}}",
-                            safeTitle, x, y, w, h
+                            "{{\"title\":\"{0}\",\"processName\":\"{1}\",\"x\":{2},\"y\":{3},\"width\":{4},\"height\":{5}}}",
+                            safeTitle, safeProc, x, y, w, h
                         );
                     }
                 }
@@ -339,11 +366,10 @@ class Program {
             } catch {}
         }
 
-        // 1. Suivi haute fréquence (~125 Hz, 8 ms) pour les déplacements clavier (Win+Flèches), restaurations, et animations
-        // Les glissements à la souris et WinEvents sont traités instantanément sans aucun délai.
+        // 1. Suivi haute fréquence (~250 Hz, 4 ms) pour un accrochage fluide sans latence lors du déplacement de fenêtre
         Timer windowTimer = new Timer((e) => {
             EmitWindowIfChanged(false);
-        }, null, 8, 8);
+        }, null, 4, 4);
 
         // 2. Échantillonnage d'activité et musique toutes les 500 ms
         Timer reportTimer = new Timer((e) => {

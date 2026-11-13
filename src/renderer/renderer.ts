@@ -94,7 +94,7 @@ const NEED_ALERT_LABELS: Record<NeedKey, { title: string; speech: string }> = {
  * Crée un payload d'initialisation autonome en mémoire si `window.petAPI` est absent (mode navigateur/test).
  */
 function createFallbackBootstrap(): BootstrapPayload {
-  const saveData = createInitialSaveData('Mochi', Date.now());
+  const saveData = createInitialSaveData('Mimoo', Date.now());
   return {
     saveData,
     gameConfig: defaultGameConfigJson as GameConfig,
@@ -153,6 +153,9 @@ class DesktopPetRendererApp {
   private lastFrameTimestamp = 0;
   private lastLogicTickTimestamp = 0;
   private lastAutoSaveTimestamp = 0;
+  private activeCaressPhrase: string | null = null;
+  private lastCaressActivityAt = 0;
+  private lastActiveWindowTitle = '';
   private lastNotificationTimestamp = 0;
   private lastOverlayInputTimestamp = 0;
   private hasMainPcActivityHook = false;
@@ -633,7 +636,7 @@ class DesktopPetRendererApp {
         this.lastNotificationTimestamp = nowMs;
         const firstCritical = tickResult.criticalNeeds[0];
         const alertInfo = NEED_ALERT_LABELS[firstCritical];
-        this.showSpeechBubble(alertInfo.speech, 4000);
+        this.showSpeechBubble(alertInfo.speech, 4000, true);
         if (settings.notificationsEnabled) {
           void window.petAPI?.notifyCriticalNeed(
             `${tickResult.pet.name} — ${alertInfo.title}`,
@@ -1178,8 +1181,8 @@ class DesktopPetRendererApp {
       this.handleCleanAction();
     });
 
-    document.getElementById('btn-action-pomodoro')?.addEventListener('click', () => {
-      this.openPomodoroModal();
+    document.getElementById('btn-action-inventory')?.addEventListener('click', () => {
+      this.openShopModal('inventory');
     });
 
     document.getElementById('btn-action-music')?.addEventListener('click', () => {
@@ -1187,7 +1190,7 @@ class DesktopPetRendererApp {
     });
 
     document.getElementById('btn-action-shop')?.addEventListener('click', () => {
-      this.openShopModal();
+      this.openShopModal('market');
     });
 
     document.getElementById('btn-close-shop')?.addEventListener('click', () => {
@@ -1600,7 +1603,8 @@ class DesktopPetRendererApp {
 
     window.petAPI?.onActiveWindowChanged?.((windowInfo: ActiveWindowInfo | null) => {
       this.petActor.setActiveWindow(windowInfo);
-      if (windowInfo?.title) {
+      if (windowInfo?.title && windowInfo.title !== this.lastActiveWindowTitle) {
+        this.lastActiveWindowTitle = windowInfo.title;
         this.maybeReactToActiveApp(windowInfo.title);
       }
       if (this.petActor.getIsPerchingOnWindow()) {
@@ -1655,7 +1659,23 @@ class DesktopPetRendererApp {
     });
   }
 
+  private hasUnresolvedNeed(): boolean {
+    const pet = this.engine.getState();
+    return (
+      pet.stage !== 'egg' &&
+      (pet.needs.hunger < 45 ||
+        pet.needs.cleanliness < 60 ||
+        pet.poopCount > 0 ||
+        pet.needsCuddle ||
+        pet.needsPlay ||
+        pet.needs.energy < 30)
+    );
+  }
+
   private evaluateActivityDialogues(mouseClicks: number, keyPresses: number, now: number): void {
+    if (this.hasUnresolvedNeed()) {
+      return;
+    }
     const pet = this.engine.getState();
     if (pet.stage === 'egg' || pet.isSleeping) {
       return;
@@ -1863,7 +1883,7 @@ class DesktopPetRendererApp {
     this.animator.setState('eat', 1800);
     this.animator.spawnParticles('crumb', this.petActor.x, this.petActor.y, 4);
     this.animator.spawnParticles('heart', this.petActor.x, this.petActor.y, 3);
-    this.showSpeechBubble(`Miam ! ${food.name} ${food.icon}`);
+    this.showSpeechBubble(`Miam ! ${food.name} ${food.icon}`, 3200, true);
 
     if (result.evolved && result.newForm) {
       this.handleEvolutionTriggered(result.newForm);
@@ -1898,17 +1918,24 @@ class DesktopPetRendererApp {
     }
 
     if (fromCursorRub) {
-      const caressPhrases = [
-        'Ronron... 💕 C’est tellement doux tes caresses !',
-        'Mmh, pile derrière les oreilles ! 🥰',
-        'Hihi, ça chatouille un peu mais j’adore ! ✨',
-        'Encore des papouilles s’il te plaît ! 💖',
-      ];
-      this.showSpeechBubble(caressPhrases[Math.floor(Math.random() * caressPhrases.length)], 2800);
+      if (!this.hasUnresolvedNeed()) {
+        const nowMs = Date.now();
+        if (this.activeCaressPhrase === null || nowMs - this.lastCaressActivityAt > 3500) {
+          const caressPhrases = [
+            'Ronron... 💕 C’est tellement doux tes caresses !',
+            'Mmh, pile derrière les oreilles ! 🥰',
+            'Hihi, ça chatouille un peu mais j’adore ! ✨',
+            'Encore des papouilles s’il te plaît ! 💖',
+          ];
+          this.activeCaressPhrase = caressPhrases[Math.floor(Math.random() * caressPhrases.length)];
+        }
+        this.lastCaressActivityAt = nowMs;
+        this.showSpeechBubble(this.activeCaressPhrase, 3000, true);
+      }
     } else if (result.bonusApplied) {
-      this.showSpeechBubble('Ronron... J’adore les caresses ! 💖');
+      this.showSpeechBubble('Ronron... J’adore les caresses ! 💖', 3200, true);
     } else {
-      this.showSpeechBubble('Merci pour ce câlin tout doux ! 🤗💖');
+      this.showSpeechBubble('Merci pour ce câlin tout doux ! 🤗💖', 3200, true);
     }
 
     this.refreshAllPanelsUI();
@@ -1951,13 +1978,64 @@ class DesktopPetRendererApp {
     this.hitTester.refresh();
   }
 
+  private formatSoftwareName(windowTitle: string, processName?: string): string {
+    const procMap: Record<string, string> = {
+      chrome: 'Google Chrome',
+      msedge: 'Microsoft Edge',
+      firefox: 'Mozilla Firefox',
+      brave: 'Brave',
+      opera: 'Opera',
+      vivaldi: 'Vivaldi',
+      code: 'Visual Studio Code',
+      devenv: 'Visual Studio',
+      discord: 'Discord',
+      spotify: 'Spotify',
+      explorer: 'Explorateur Windows',
+      notepad: 'Bloc-notes',
+      'notepad++': 'Notepad++',
+      steam: 'Steam',
+      obs64: 'OBS Studio',
+      obs32: 'OBS Studio',
+      vlc: 'VLC',
+      windowsterminal: 'Terminal Windows',
+      powershell: 'PowerShell',
+      pwsh: 'PowerShell',
+      cmd: 'Invite de commandes',
+      winword: 'Microsoft Word',
+      excel: 'Microsoft Excel',
+      powerpnt: 'PowerPoint',
+      teams: 'Microsoft Teams',
+      'ms-teams': 'Microsoft Teams',
+      slack: 'Slack',
+      notion: 'Notion',
+      figma: 'Figma',
+      photoshop: 'Photoshop',
+      antigravity: 'Antigravity',
+    };
+    const procKey = (processName ?? '').trim().toLowerCase().replace(/\.exe$/i, '');
+    if (procKey && procMap[procKey]) {
+      return procMap[procKey];
+    }
+    const parts = windowTitle.split(/\s+[—–-]\s+/).map((p) => p.trim()).filter(Boolean);
+    if (parts.length > 1) {
+      const candidate = parts[parts.length - 1];
+      if (candidate.length >= 2 && candidate.length <= 32) {
+        return candidate;
+      }
+    }
+    if (procKey) {
+      return procKey.charAt(0).toUpperCase() + procKey.slice(1);
+    }
+    return windowTitle.length > 25 ? windowTitle.slice(0, 22) + '...' : windowTitle;
+  }
+
   private handleWindowPerchJump(windowTitle: string): void {
     const pet = this.engine.getState();
     if (pet.stage === 'egg') return;
     this.animator.setState('play', 1200);
     this.animator.spawnParticles('sparkle', this.petActor.x, this.petActor.y - 15, 5);
-    const shortTitle = windowTitle.length > 25 ? windowTitle.slice(0, 22) + '...' : windowTitle;
-    this.showSpeechBubble(`Hop là ! Je saute sur ta fenêtre « ${shortTitle} » ! 🐾`, 2600);
+    const appName = this.formatSoftwareName(windowTitle, this.petActor.getActiveWindow()?.processName);
+    this.showSpeechBubble(`Hop là ! Je saute sur ${appName} ! 🐾`, 2600);
   }
 
   private handleWindowPerchLand(windowTitle: string): void {
@@ -1965,8 +2043,8 @@ class DesktopPetRendererApp {
     if (pet.stage === 'egg') return;
     this.animator.setState('happy', 2200);
     this.animator.spawnParticles('star', this.petActor.x, this.petActor.y - 20, 6);
-    const shortTitle = windowTitle.length > 25 ? windowTitle.slice(0, 22) + '...' : windowTitle;
-    this.showSpeechBubble(`Me voilà bien perché au-dessus de « ${shortTitle} » ! 👀✨`, 3400);
+    const appName = this.formatSoftwareName(windowTitle, this.petActor.getActiveWindow()?.processName);
+    this.showSpeechBubble(`Me voilà bien perché sur ${appName} ! 👀✨`, 3400);
   }
 
   private handleToggleSleep(): void {
@@ -1993,7 +2071,7 @@ class DesktopPetRendererApp {
       }
       this.animator.forceState('sleep');
       this.animator.spawnParticles('zzz', this.petActor.x, this.petActor.y, 3);
-      this.showSpeechBubble(bed ? 'Zzz… Trop bien dans mon panier douillet ! 🛏️💤' : 'Bonne nuit... Zzz 💤');
+      this.showSpeechBubble(bed ? 'Zzz… Trop bien dans mon panier douillet ! 🛏️💤' : 'Bonne nuit... Zzz 💤', 3200, true);
     } else {
       this.animator.setState('happy', 1100);
       this.animator.spawnParticles('sparkle', this.petActor.x, this.petActor.y, 3);
@@ -2070,7 +2148,7 @@ class DesktopPetRendererApp {
       this.animator.spawnParticles('sparkle', this.petActor.x, this.petActor.y, 10);
       this.animator.spawnParticles('star', this.petActor.x, this.petActor.y, 6);
       this.animator.spawnParticles('clean', this.petActor.x, this.petActor.y, 6);
-      this.showSpeechBubble('✨ Tout propre et étincelant !', 3600);
+      this.showSpeechBubble('✨ Tout propre et étincelant !', 3600, true);
 
       const currentForm = this.engine.getCurrentSpeciesForm();
       if (currentForm && currentForm.id !== prevFormId) {
@@ -2150,6 +2228,9 @@ class DesktopPetRendererApp {
    * et de gerbes de particules adaptées.
    */
   private triggerSpontaneousDialogue(): void {
+    if (this.hasUnresolvedNeed()) {
+      return;
+    }
     const pet = this.engine.getState();
     const hour = new Date().getHours();
 
@@ -2356,7 +2437,7 @@ class DesktopPetRendererApp {
     }
 
     const inputEl = document.getElementById('input-pet-name') as HTMLInputElement | null;
-    const customName = inputEl?.value.trim() || 'Mochi';
+    const customName = inputEl?.value.trim() || 'Mimoo';
 
     if (window.petAPI) {
       const freshSave = await window.petAPI.resetSave(customName);
@@ -2836,12 +2917,18 @@ class DesktopPetRendererApp {
     });
   }
 
-  private openShopModal(): void {
+  private openShopModal(initialTab?: 'market' | 'inventory'): void {
     this.hideHudPanel();
     this.statsModalEl?.classList.add('hidden');
     this.onlineModalEl?.classList.add('hidden');
     this.sandboxModalEl?.classList.add('hidden');
     this.petActor.stopWalking();
+
+    if (initialTab) {
+      this.currentShopTab = initialTab;
+      document.getElementById('tab-btn-shop-market')?.classList.toggle('active', initialTab === 'market');
+      document.getElementById('tab-btn-shop-inventory')?.classList.toggle('active', initialTab === 'inventory');
+    }
 
     if (this.shopModalEl) {
       if (!this.shopModalPositioned) {
@@ -3734,7 +3821,10 @@ class DesktopPetRendererApp {
     }
   }
 
-  private showSpeechBubble(text: string, durationMs: number = 3200): void {
+  private showSpeechBubble(text: string, durationMs: number = 3200, allowDuringNeed: boolean = false): void {
+    if (!allowDuringNeed && this.hasUnresolvedNeed()) {
+      return;
+    }
     if (!this.speechBubbleEl || !this.speechTextEl) {
       return;
     }

@@ -182,6 +182,32 @@ describe('PetActor - Comportement du jeu de balle et condition de capture réell
     expect(pet.getIsCarryingBall()).toBe(false);
   });
 
+  it('ne valide PAS le retour de balle si la souris passe au-dessus sans toucher le familier', () => {
+    const groundY = pet.getGroundY();
+    pet.startFetchingBall(600, groundY);
+
+    for (let i = 0; i < 15; i++) {
+      pet.update(0.05, { canWalk: true });
+    }
+    expect(pet.getIsCarryingBall()).toBe(true);
+
+    // La souris passe au-dessus du familier (même X, mais 500px plus haut)
+    pet.handlePointerMove(600, groundY - 500);
+    for (let i = 0; i < 10; i++) {
+      pet.update(0.05, { canWalk: true });
+    }
+
+    expect(onBallReturned).not.toHaveBeenCalled();
+    expect(pet.getIsCarryingBall()).toBe(true);
+
+    // La souris descend toucher le familier
+    pet.handlePointerMove(600, groundY);
+    pet.update(0.05, { canWalk: true });
+
+    expect(onBallReturned).toHaveBeenCalledTimes(1);
+    expect(pet.getIsCarryingBall()).toBe(false);
+  });
+
   it('reste totalement immobile et annule la poursuite lorsqu il dort', () => {
     const groundY = pet.getGroundY();
     pet.startFetchingBall(780, groundY);

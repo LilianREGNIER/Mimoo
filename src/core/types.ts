@@ -391,6 +391,7 @@ export interface PetState {
 /** Informations de géométrie de la fenêtre active au premier plan sous Windows. */
 export interface ActiveWindowInfo {
   title: string;
+  processName?: string;
   x: number;
   y: number;
   width: number;

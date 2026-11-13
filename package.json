@@ -1,6 +1,6 @@
 {
   "name": "mimoo",
-  "version": "1.0.8",
+  "version": "1.0.9",
   "description": "Mimoo Desktop Pet pour Windows 10/11",
   "author": "DesktopPet Team",
   "main": "dist/main/main.js",

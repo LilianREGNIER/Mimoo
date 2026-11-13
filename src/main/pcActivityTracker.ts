@@ -162,6 +162,7 @@ export class PcActivityTracker {
             (prev !== null &&
               newWin !== null &&
               (prev.title !== newWin.title ||
+                prev.processName !== newWin.processName ||
                 prev.x !== newWin.x ||
                 prev.y !== newWin.y ||
                 prev.width !== newWin.width ||

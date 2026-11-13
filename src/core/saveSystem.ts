@@ -158,7 +158,7 @@ export function createInitialPetState(name?: string, nowMs?: number): PetState {
   const safeNow =
     typeof nowMs === 'number' && Number.isFinite(nowMs) ? nowMs : Date.now();
   const safeName =
-    typeof name === 'string' && name.trim().length > 0 ? name.trim() : 'Mochi';
+    typeof name === 'string' && name.trim().length > 0 ? name.trim() : 'Mimoo';
 
   return {
     name: safeName,

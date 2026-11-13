@@ -759,7 +759,7 @@ export function encodeFriendPassport(pet: PetState, ownerName?: string): string 
       : 'Ami';
 
   const payload = {
-    n: pet.name || 'Mochi',
+    n: pet.name || 'Mimoo',
     o: safeOwner,
     f: pet.formId,
     s: pet.stage,
@@ -812,7 +812,7 @@ export function decodeFriendPassport(code: string): FriendPetProfile | null {
     const rawName =
       typeof record.n === 'string' && record.n.trim().length > 0
         ? record.n.trim()
-        : 'Mochi';
+        : 'Mimoo';
     const rawOwner =
       typeof record.o === 'string' && record.o.trim().length > 0
         ? record.o.trim()
