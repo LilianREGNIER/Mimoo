@@ -19,6 +19,8 @@ export interface HitTestTargetProvider {
   isBallThrowModeActive?: () => boolean;
   /** Teste si le curseur survole la balle de tennis au sol. */
   isPointOverBall?: (clientX: number, clientY: number) => boolean;
+  /** Teste si le curseur survole une décoration posée sur le bureau. */
+  isPointOverDecoration?: (clientX: number, clientY: number) => boolean;
 }
 
 /**
@@ -104,6 +106,9 @@ export class HitTester {
       return true;
     }
     if (this.provider.isPointOverBall?.(clientX, clientY)) {
+      return true;
+    }
+    if (this.provider.isPointOverDecoration?.(clientX, clientY)) {
       return true;
     }
 

@@ -206,6 +206,8 @@ class DesktopPetRendererApp {
   private weatherMood: 'clear' | 'rain' | 'snow' = 'clear';
   private pendingMyRpsChoice: RoomRpsChoice | null = null;
   private pendingFriendRps: { name: string; choice: RoomRpsChoice } | null = null;
+  private draggingDecorationId: string | null = null;
+  private lastDecorInteractionAt = 0;
 
   constructor() {
     const canvasEl = document.getElementById('pet-canvas') as HTMLCanvasElement | null;
@@ -403,6 +405,10 @@ class DesktopPetRendererApp {
         if (!this.ballEntity.active) return false;
         return this.ballEntity.isPointInside(cx, cy, 22);
       },
+      isPointOverDecoration: (cx, cy) => {
+        if (this.draggingDecorationId) return true;
+        return this.findDecorationAt(cx, cy) !== null;
+      },
     });
 
     // 6. Construction des listes dynamiques et écouteurs d'événements UI / IPC
@@ -580,6 +586,7 @@ class DesktopPetRendererApp {
     const prevFormId = this.engine.getState().formId;
     const settings = this.engine.getSaveData().settings;
     const tickResult = this.engine.tick(deltaSeconds, nowMs);
+    this.checkAutonomousDecorationUse(nowMs);
     const evoCheck = this.engine.checkEvolution();
 
     // Tick du chronomètre Pomodoro / Focus
@@ -782,35 +789,41 @@ class DesktopPetRendererApp {
 
     const pet = this.engine.getState();
 
-    // Rendu des décorations de bureau posées par le joueur
+    // Rendu des décorations de bureau posées par le joueur (déplaçables partout)
     if (Array.isArray(pet.placedDecorations) && pet.placedDecorations.length > 0) {
       const groundY = this.petActor.getGroundY();
       const hour = new Date().getHours();
-      const isNight = hour >= 20 || hour < 7;
+      const isEvening = hour >= 18 || hour < 7;
       for (let i = 0; i < pet.placedDecorations.length; i++) {
         const placed = pet.placedDecorations[i];
         const def = this.decorationsCatalog.find((d) => d.id === placed.id);
         if (!def) continue;
-        const dx = Math.max(48, Math.min(window.innerWidth - 48, placed.x || 90 + i * 56));
-        const dy = groundY + 10;
+        const dx = Math.max(36, Math.min(window.innerWidth - 36, placed.x || 90 + i * 56));
+        const dy = Math.max(40, Math.min(window.innerHeight - 28, placed.y || groundY + 10));
         this.ctx.save();
-        if (def.id === 'desk_lamp' && isNight) {
-          const glow = this.ctx.createRadialGradient(dx, dy - 16, 4, dx, dy - 16, 48);
-          glow.addColorStop(0, 'rgba(253, 224, 71, 0.35)');
+        this.ctx.globalAlpha = 1;
+        if (def.id === 'desk_lamp') {
+          const glowRadius = isEvening ? 125 : 90;
+          const glowAlpha = isEvening ? 0.42 : 0.24;
+          const glow = this.ctx.createRadialGradient(dx, dy - 12, 6, dx, dy - 12, glowRadius);
+          glow.addColorStop(0, `rgba(253, 224, 71, ${glowAlpha})`);
+          glow.addColorStop(0.55, `rgba(251, 191, 36, ${(glowAlpha * 0.45).toFixed(2)})`);
           glow.addColorStop(1, 'rgba(253, 224, 71, 0)');
           this.ctx.fillStyle = glow;
           this.ctx.beginPath();
-          this.ctx.arc(dx, dy - 16, 48, 0, Math.PI * 2);
+          this.ctx.arc(dx, dy - 12, glowRadius, 0, Math.PI * 2);
           this.ctx.fill();
         }
-        this.ctx.fillStyle = 'rgba(0, 0, 0, 0.18)';
+        this.ctx.fillStyle = 'rgba(0, 0, 0, 0.22)';
         this.ctx.beginPath();
-        this.ctx.ellipse(dx, dy + 8, 16, 5, 0, 0, Math.PI * 2);
+        this.ctx.ellipse(dx, dy + 12, 18, 5, 0, 0, Math.PI * 2);
         this.ctx.fill();
-        this.ctx.font = '28px "Segoe UI Emoji", "Apple Color Emoji", sans-serif';
+        this.ctx.fillStyle = '#ffffff';
+        this.ctx.globalAlpha = 1;
+        this.ctx.font = '32px "Segoe UI Emoji", "Apple Color Emoji", sans-serif';
         this.ctx.textAlign = 'center';
         this.ctx.textBaseline = 'middle';
-        this.ctx.fillText(def.emoji, dx, dy - 8);
+        this.ctx.fillText(def.emoji, dx, dy - 4);
         this.ctx.restore();
       }
     }
@@ -905,6 +918,14 @@ class DesktopPetRendererApp {
       this.hitTester.evaluateAt(e.clientX, e.clientY);
       this.petActor.handlePointerMove(e.clientX, e.clientY);
 
+      // Déplacement d'une décoration de bureau à la souris
+      if (this.draggingDecorationId) {
+        const clampedX = Math.max(36, Math.min(window.innerWidth - 36, e.clientX));
+        const clampedY = Math.max(40, Math.min(window.innerHeight - 28, e.clientY));
+        this.engine.updateDecorationPosition(this.draggingDecorationId, clampedX, clampedY);
+        this.renderFrame();
+      }
+
       // Déplacement de la balle à la souris (simulation de vrai lancer physique)
       if (this.isDraggingBall) {
         this.ballEntity.x = e.clientX;
@@ -978,6 +999,16 @@ class DesktopPetRendererApp {
     });
 
     this.canvas.addEventListener('mousedown', (e) => {
+      // 0) Saisie d'une décoration posée sur le bureau pour la déplacer librement
+      if (e.button === 0 && !this.isBallThrowMode && !this.isSpongeMode) {
+        const decId = this.findDecorationAt(e.clientX, e.clientY);
+        if (decId) {
+          this.draggingDecorationId = decId;
+          this.renderFrame();
+          return;
+        }
+      }
+
       // 1) Si on clique sur la balle (en mode lancer ou au sol), saisie pour un vrai lancer physique au geste
       if (
         e.button === 0 &&
@@ -1033,6 +1064,10 @@ class DesktopPetRendererApp {
     });
 
     window.addEventListener('mouseup', () => {
+      if (this.draggingDecorationId) {
+        this.draggingDecorationId = null;
+        void this.persistSaveState();
+      }
       if (this.isDraggingBall) {
         this.isDraggingBall = false;
         const now = performance.now();
@@ -1432,16 +1467,6 @@ class DesktopPetRendererApp {
       this.petActor.setWindowJumpEnabled(enabled);
       if (!enabled) {
         this.showSpeechBubble("D'accord, je reste sur le bureau ! 🐾", 3000);
-      }
-    });
-
-    const soundInput = document.getElementById('toggle-sound') as HTMLInputElement | null;
-    soundInput?.addEventListener('change', () => {
-      const enabled = soundInput.checked;
-      this.soundManager.setEnabled(enabled);
-      this.updateUserSetting({ soundEnabled: enabled });
-      if (enabled) {
-        this.soundManager.play('pet');
       }
     });
 
@@ -1962,9 +1987,13 @@ class DesktopPetRendererApp {
       this.ballModeBannerEl?.classList.add('hidden');
       this.petActor.stopWalking();
       this.petActor.stopFetchingBall();
+      const bed = (pet.placedDecorations ?? []).find((d) => d.id === 'cozy_bed');
+      if (bed) {
+        this.petActor.setPosition(bed.x, bed.y - 12);
+      }
       this.animator.forceState('sleep');
       this.animator.spawnParticles('zzz', this.petActor.x, this.petActor.y, 3);
-      this.showSpeechBubble('Bonne nuit... Zzz 💤');
+      this.showSpeechBubble(bed ? 'Zzz… Trop bien dans mon panier douillet ! 🛏️💤' : 'Bonne nuit... Zzz 💤');
     } else {
       this.animator.setState('happy', 1100);
       this.animator.spawnParticles('sparkle', this.petActor.x, this.petActor.y, 3);
@@ -3665,11 +3694,6 @@ class DesktopPetRendererApp {
       windowJumpEl.checked = settings.windowJumpEnabled ?? true;
     }
 
-    const soundEl = document.getElementById('toggle-sound') as HTMLInputElement | null;
-    if (soundEl) {
-      soundEl.checked = settings.soundEnabled ?? true;
-    }
-
     const nameInputEl = document.getElementById('input-pet-name') as HTMLInputElement | null;
     if (nameInputEl) {
       nameInputEl.value = save.pet.name;
@@ -4303,6 +4327,63 @@ class DesktopPetRendererApp {
       row.appendChild(info);
       row.appendChild(btn);
       listEl.appendChild(row);
+    }
+  }
+
+  private findDecorationAt(cx: number, cy: number): string | null {
+    const placedList = this.engine?.getState().placedDecorations ?? [];
+    for (let i = placedList.length - 1; i >= 0; i--) {
+      const p = placedList[i];
+      if (Math.hypot(cx - p.x, cy - (p.y - 4)) <= 26) {
+        return p.id;
+      }
+    }
+    return null;
+  }
+
+  private checkAutonomousDecorationUse(nowMs: number): void {
+    const pet = this.engine.getState();
+    const placed = pet.placedDecorations ?? [];
+    if (
+      placed.length === 0 ||
+      pet.stage === 'egg' ||
+      pet.isSleeping ||
+      this.petActor.isDragging ||
+      this.petActor.getIsFetchingBall() ||
+      this.miniGames.isPlaying()
+    ) {
+      return;
+    }
+    if (nowMs - this.lastDecorInteractionAt < 45_000) return;
+
+    const bed = placed.find((d) => d.id === 'cozy_bed');
+    if (bed && pet.needs.energy < 28) {
+      this.lastDecorInteractionAt = nowMs;
+      this.petActor.walkToward(bed.x);
+      setTimeout(() => {
+        const latest = this.engine.getState();
+        if (!latest.isSleeping && latest.needs.energy < 35) {
+          this.handleToggleSleep();
+        }
+      }, 1800);
+      return;
+    }
+
+    const bowl = placed.find((d) => d.id === 'food_bowl');
+    if (bowl && pet.needs.hunger < 35) {
+      this.lastDecorInteractionAt = nowMs;
+      this.petActor.walkToward(bowl.x);
+      this.showSpeechBubble("J'ai un petit creux… je vais voir ma gamelle ! 🥣", 3000);
+      return;
+    }
+
+    const plant = placed.find((d) => d.id === 'mini_plant');
+    if (plant && Math.random() < 0.25) {
+      this.lastDecorInteractionAt = nowMs;
+      this.petActor.walkToward(plant.x);
+      setTimeout(() => {
+        this.animator.spawnParticles('heart', this.petActor.x, this.petActor.y - 16, 4);
+      }, 1400);
     }
   }
 

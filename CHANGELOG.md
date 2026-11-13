@@ -1,5 +1,12 @@
 # Changelog — Mimoo
 
+## v1.0.6
+- **Silence total** : suppression complète de tous les bruitages dans l'application.
+- **Décorations interactives et déplaçables** :
+  - Glissez-déposez librement le panier, la gamelle, la plante ou la lampe n'importe où sur votre bureau.
+  - Mimoo va dormir automatiquement dans son **Panier Douillet** quand il est fatigué, s'approche de sa **Gamelle Étoilée** quand il a faim, admire sa **Plante**, et la **Petite Lampe** éclaire chaleureusement son coin de bureau.
+- **Chapeaux & accessoires corrigés** : dessinés en vectoriel opaque (`globalAlpha = 1`) directement dans le repère transformé du familier pour suivre parfaitement sa tête, ses yeux, ses sauts et ses étirements.
+
 ## v1.0.5
 - **Salon Online social** : chat rapide dans le salon, émotes & cadeaux (`❤️ Câlin`, `🍎 Friandise +5 🪙`, `❄️ Boule de neige`, `🎉 Confettis`) et duel Pierre-Feuille-Ciseaux en direct (`+15 🪙` en cas de victoire).
 - **Défis Quotidiens** : 3 quêtes journalières générées chaque jour dans **Journal → Statistiques** avec récompenses en MimooCoins.

@@ -804,6 +804,7 @@ export class SpriteAnimator {
     ctx.imageSmoothingEnabled = false;
 
     // 1. Ombre douce sous le familier (au niveau du sol ou sous ses pieds)
+    ctx.save();
     const liftDistance = Math.max(0, groundY - renderY);
     const shadowScale = Math.max(0.45, 1 - liftDistance / 320);
     const shadowY = Math.max(y + halfSize - 6, groundY + halfSize - 6);
@@ -819,6 +820,7 @@ export class SpriteAnimator {
       Math.PI * 2
     );
     ctx.fill();
+    ctx.restore();
 
     // 2. Affichage des petites saletés (poops) au sol autour du familier
     if (poopCount > 0 && formId !== 'egg') {
@@ -906,6 +908,39 @@ export class SpriteAnimator {
         drawSize,
         drawSize
       );
+
+      // 5.5 Accessoire et Chapeau cosmétiques dessinés DANS le repère transformé du familier
+      // (suivent automatiquement les mouvements verticaux, étirements, rotations et flipX)
+      if (formId !== 'egg') {
+        const animBounceY =
+          this.state === 'walk' || this.state === 'play' || this.state === 'happy'
+            ? (this.frameIndex % 2 === 1 ? -1.5 * scale : 0)
+            : 0;
+        if (params.equippedCosmetics?.accessory) {
+          const accLocalX = anchor.accOffset.x * pixelUnit;
+          const accLocalY = anchor.accOffset.y * pixelUnit + animBounceY;
+          const accScale = scale * (anchor.accOffset.scale ?? 1.0);
+          this.renderAccessoryCosmetic(
+            ctx,
+            accLocalX,
+            accLocalY,
+            params.equippedCosmetics.accessory,
+            accScale
+          );
+        }
+        if (params.equippedCosmetics?.hat) {
+          const hatLocalX = anchor.hatOffset.x * pixelUnit;
+          const hatLocalY = anchor.hatOffset.y * pixelUnit + animBounceY;
+          const hatScale = scale * (anchor.hatOffset.scale ?? 1.0);
+          this.renderHatCosmetic(
+            ctx,
+            hatLocalX,
+            hatLocalY,
+            params.equippedCosmetics.hat,
+            hatScale
+          );
+        }
+      }
       ctx.restore();
     }
 
@@ -919,34 +954,6 @@ export class SpriteAnimator {
         cleanliness,
         poopCount,
         cleaningProgress
-      );
-    }
-
-    // 5.5 Accessoire et Chapeau cosmétiques équipés (dessinés par-dessus le familier)
-    if (formId !== 'egg' && params.equippedCosmetics?.accessory) {
-      const accX = renderX + (flipX ? -anchor.accOffset.x : anchor.accOffset.x) * pixelUnit;
-      const accY = renderY + anchor.accOffset.y * pixelUnit;
-      const accScale = scale * (anchor.accOffset.scale ?? 1.0);
-      this.renderAccessoryCosmetic(
-        ctx,
-        accX,
-        accY,
-        params.equippedCosmetics.accessory,
-        accScale,
-        flipX
-      );
-    }
-    if (formId !== 'egg' && params.equippedCosmetics?.hat) {
-      const hatX = renderX + (flipX ? -anchor.hatOffset.x : anchor.hatOffset.x) * pixelUnit;
-      const hatY = renderY + anchor.hatOffset.y * pixelUnit;
-      const hatScale = scale * (anchor.hatOffset.scale ?? 1.0);
-      this.renderHatCosmetic(
-        ctx,
-        hatX,
-        hatY,
-        params.equippedCosmetics.hat,
-        hatScale,
-        flipX
       );
     }
 
@@ -1397,34 +1404,105 @@ export class SpriteAnimator {
     x: number,
     y: number,
     hatId: string,
-    scale: number,
-    flipX: boolean
+    scale: number
   ): void {
     ctx.save();
+    ctx.globalAlpha = 1;
     ctx.translate(x, y);
-    if (flipX) ctx.scale(-1, 1);
-    const s = Math.max(0.7, scale);
-    ctx.textAlign = 'center';
-    ctx.textBaseline = 'bottom';
+    const s = Math.max(0.75, scale);
+    ctx.lineJoin = 'round';
+    ctx.lineCap = 'round';
 
     if (hatId === 'hat_crown') {
-      ctx.font = `${Math.round(22 * s)}px "Segoe UI Emoji", sans-serif`;
-      ctx.fillText('👑', 0, 1 * s);
+      ctx.fillStyle = '#facc15';
+      ctx.strokeStyle = '#78350f';
+      ctx.lineWidth = 1.8;
+      ctx.beginPath();
+      ctx.moveTo(-11 * s, 0);
+      ctx.lineTo(-12 * s, -12 * s);
+      ctx.lineTo(-5 * s, -6 * s);
+      ctx.lineTo(0, -14 * s);
+      ctx.lineTo(5 * s, -6 * s);
+      ctx.lineTo(12 * s, -12 * s);
+      ctx.lineTo(11 * s, 0);
+      ctx.closePath();
+      ctx.fill();
+      ctx.stroke();
+      ctx.fillStyle = '#ef4444';
+      ctx.beginPath();
+      ctx.arc(0, -4 * s, 2 * s, 0, Math.PI * 2);
+      ctx.fill();
     } else if (hatId === 'hat_tophat') {
-      ctx.font = `${Math.round(22 * s)}px "Segoe UI Emoji", sans-serif`;
-      ctx.fillText('🎩', 0, 0);
+      ctx.fillStyle = '#1e293b';
+      ctx.strokeStyle = '#020617';
+      ctx.lineWidth = 1.8;
+      ctx.fillRect(-14 * s, -3 * s, 28 * s, 4 * s);
+      ctx.strokeRect(-14 * s, -3 * s, 28 * s, 4 * s);
+      ctx.fillRect(-9 * s, -17 * s, 18 * s, 14 * s);
+      ctx.strokeRect(-9 * s, -17 * s, 18 * s, 14 * s);
+      ctx.fillStyle = '#ef4444';
+      ctx.fillRect(-9 * s, -6 * s, 18 * s, 3 * s);
     } else if (hatId === 'hat_bow') {
-      ctx.font = `${Math.round(20 * s)}px "Segoe UI Emoji", sans-serif`;
-      ctx.fillText('🎀', 0, 1 * s);
+      ctx.fillStyle = '#f472b6';
+      ctx.strokeStyle = '#831843';
+      ctx.lineWidth = 1.6;
+      ctx.beginPath();
+      ctx.moveTo(0, -3 * s);
+      ctx.lineTo(-10 * s, -9 * s);
+      ctx.lineTo(-10 * s, 3 * s);
+      ctx.closePath();
+      ctx.moveTo(0, -3 * s);
+      ctx.lineTo(10 * s, -9 * s);
+      ctx.lineTo(10 * s, 3 * s);
+      ctx.closePath();
+      ctx.fill();
+      ctx.stroke();
+      ctx.fillStyle = '#ec4899';
+      ctx.beginPath();
+      ctx.arc(0, -3 * s, 3 * s, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.stroke();
     } else if (hatId === 'hat_wizard') {
-      ctx.font = `${Math.round(24 * s)}px "Segoe UI Emoji", sans-serif`;
-      ctx.fillText('🧙‍♂️', 0, 1 * s);
+      ctx.fillStyle = '#7c3aed';
+      ctx.strokeStyle = '#2e1065';
+      ctx.lineWidth = 1.8;
+      ctx.beginPath();
+      ctx.ellipse(0, 0, 15 * s, 4 * s, 0, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.stroke();
+      ctx.beginPath();
+      ctx.moveTo(-9 * s, -1 * s);
+      ctx.lineTo(2 * s, -20 * s);
+      ctx.lineTo(9 * s, -1 * s);
+      ctx.closePath();
+      ctx.fill();
+      ctx.stroke();
+      ctx.fillStyle = '#facc15';
+      ctx.beginPath();
+      ctx.arc(0, -8 * s, 2.2 * s, 0, Math.PI * 2);
+      ctx.fill();
     } else if (hatId === 'hat_cap') {
-      ctx.font = `${Math.round(20 * s)}px "Segoe UI Emoji", sans-serif`;
-      ctx.fillText('🧢', 0, 0);
+      ctx.fillStyle = '#ef4444';
+      ctx.strokeStyle = '#7f1d1d';
+      ctx.lineWidth = 1.8;
+      ctx.beginPath();
+      ctx.arc(0, -2 * s, 11 * s, Math.PI, 0);
+      ctx.closePath();
+      ctx.fill();
+      ctx.stroke();
+      ctx.fillStyle = '#dc2626';
+      ctx.beginPath();
+      ctx.ellipse(8 * s, -2 * s, 8 * s, 2.5 * s, 0, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.stroke();
     } else if (hatId === 'hat_halo') {
-      ctx.font = `${Math.round(20 * s)}px "Segoe UI Emoji", sans-serif`;
-      ctx.fillText('😇', 0, -3 * s);
+      ctx.strokeStyle = '#fde047';
+      ctx.lineWidth = 3.2 * s;
+      ctx.shadowColor = '#facc15';
+      ctx.shadowBlur = 8;
+      ctx.beginPath();
+      ctx.ellipse(0, -8 * s, 11 * s, 3.5 * s, 0, 0, Math.PI * 2);
+      ctx.stroke();
     }
     ctx.restore();
   }
@@ -1437,29 +1515,53 @@ export class SpriteAnimator {
     x: number,
     y: number,
     accId: string,
-    scale: number,
-    flipX: boolean
+    scale: number
   ): void {
     ctx.save();
+    ctx.globalAlpha = 1;
     ctx.translate(x, y);
-    if (flipX) ctx.scale(-1, 1);
-    const s = Math.max(0.7, scale);
-    ctx.textAlign = 'center';
-    ctx.textBaseline = 'middle';
+    const s = Math.max(0.75, scale);
+    ctx.lineJoin = 'round';
+    ctx.lineCap = 'round';
 
     if (accId === 'acc_sunglasses') {
-      ctx.font = `${Math.round(20 * s)}px "Segoe UI Emoji", sans-serif`;
-      ctx.fillText('🕶️', 0, 0);
+      ctx.fillStyle = '#0f172a';
+      ctx.strokeStyle = '#f8fafc';
+      ctx.lineWidth = 1.4;
+      ctx.fillRect(-12 * s, -4 * s, 10 * s, 7 * s);
+      ctx.strokeRect(-12 * s, -4 * s, 10 * s, 7 * s);
+      ctx.fillRect(2 * s, -4 * s, 10 * s, 7 * s);
+      ctx.strokeRect(2 * s, -4 * s, 10 * s, 7 * s);
+      ctx.fillRect(-2 * s, -2 * s, 4 * s, 2 * s);
     } else if (accId === 'acc_monocle') {
-      ctx.font = `${Math.round(18 * s)}px "Segoe UI Emoji", sans-serif`;
-      ctx.fillText('🧐', 1 * s, 0);
+      ctx.strokeStyle = '#facc15';
+      ctx.fillStyle = 'rgba(186, 230, 253, 0.35)';
+      ctx.lineWidth = 2 * s;
+      ctx.beginPath();
+      ctx.arc(6 * s, 0, 5.5 * s, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.stroke();
+      ctx.beginPath();
+      ctx.moveTo(11 * s, 2 * s);
+      ctx.quadraticCurveTo(13 * s, 9 * s, 10 * s, 14 * s);
+      ctx.stroke();
     } else if (accId === 'acc_star_glasses') {
-      ctx.font = `${Math.round(20 * s)}px "Segoe UI Emoji", sans-serif`;
-      ctx.fillText('🤩', 0, 0);
+      ctx.fillStyle = '#f472b6';
+      ctx.strokeStyle = '#fef08a';
+      ctx.lineWidth = 1.6;
+      for (const cx of [-7 * s, 7 * s]) {
+        ctx.beginPath();
+        ctx.arc(cx, 0, 5.5 * s, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.stroke();
+      }
+      ctx.fillRect(-2 * s, -1.5 * s, 4 * s, 2 * s);
     } else if (accId === 'acc_blush_hearts') {
-      ctx.font = `${Math.round(13 * s)}px "Segoe UI Emoji", sans-serif`;
-      ctx.fillText('💖', -12 * s, 4 * s);
-      ctx.fillText('💖', 12 * s, 4 * s);
+      ctx.fillStyle = '#fb7185';
+      ctx.beginPath();
+      ctx.ellipse(-10 * s, 3 * s, 4 * s, 2.5 * s, 0, 0, Math.PI * 2);
+      ctx.ellipse(10 * s, 3 * s, 4 * s, 2.5 * s, 0, 0, Math.PI * 2);
+      ctx.fill();
     }
     ctx.restore();
   }
