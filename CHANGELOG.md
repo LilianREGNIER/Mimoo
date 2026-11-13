@@ -1,5 +1,8 @@
 # Changelog — Mimoo
 
+## v1.0.4
+- **Correction téléchargement auto-updater (`404`)** : noms d'artefacts sans espaces (`Mimoo-Setup-1.0.4.exe`) pour correspondre exactement à `latest.yml` sur GitHub Releases, et distinction entre erreur `404` et erreur d'authentification (`401`/`403`).
+
 ## v1.0.3
 - **Correction balle fantôme** : suppression de l'apparition parasite de la balle de tennis lorsqu'on lance le familier sur l'écran ou lors d'un dialogue spontané.
 

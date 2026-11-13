@@ -1,6 +1,6 @@
 {
   "name": "mimoo",
-  "version": "1.0.3",
+  "version": "1.0.4",
   "description": "Mimoo Desktop Pet pour Windows 10/11",
   "author": "DesktopPet Team",
   "main": "dist/main/main.js",
@@ -53,10 +53,14 @@
       ]
     },
     "nsis": {
+      "artifactName": "Mimoo-Setup-${version}.${ext}",
       "oneClick": false,
       "allowToChangeInstallationDirectory": true,
       "createDesktopShortcut": true,
       "createStartMenuShortcut": true
+    },
+    "portable": {
+      "artifactName": "Mimoo-Portable-${version}.${ext}"
     },
     "publish": [
       {

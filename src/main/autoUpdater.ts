@@ -42,8 +42,11 @@ function configureFeedUrl(): void {
 
 function formatUpdaterError(err: unknown): string {
   const raw = err instanceof Error ? err.message : String(err ?? 'Erreur inconnue');
-  if (raw.includes('404') || raw.includes('401') || raw.includes('403')) {
-    return 'Dépôt GitHub privé inaccessible : vérifiez votre Jeton GitHub (scope repo) dans Réglages.';
+  if (raw.includes('401') || raw.includes('403')) {
+    return 'Accès GitHub refusé : vérifiez votre Jeton GitHub dans Réglages.';
+  }
+  if (raw.includes('404')) {
+    return 'Fichier de mise à jour introuvable sur GitHub Releases (404).';
   }
   if (raw.includes('ENOTFOUND') || raw.includes('ERR_NETWORK') || raw.includes('ETIMEDOUT')) {
     return 'Impossible de joindre GitHub (vérifiez votre connexion Internet).';

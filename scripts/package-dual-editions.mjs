@@ -50,7 +50,7 @@ async function packageDualEditions() {
 
     runCommand('npm run build', 'Recompilation avec le marqueur Dev Edition');
     runCommand(
-      'npx electron-builder --win --x64 --publish never -c.productName="Mimoo (Dev Edition)" -c.appId="com.mimoo.desktoppet.devedition"',
+      'npx electron-builder --win --x64 --publish never -c.productName="Mimoo (Dev Edition)" -c.appId="com.mimoo.desktoppet.devedition" -c.nsis.artifactName="Mimoo-Dev-Setup-${version}.${ext}" -c.portable.artifactName="Mimoo-Dev-Portable-${version}.${ext}"',
       'Empaquetage NSIS & Portable (Dev Edition)'
     );
 

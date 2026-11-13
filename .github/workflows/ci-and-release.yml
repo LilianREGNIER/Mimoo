@@ -57,8 +57,5 @@ jobs:
           files: |
             release/latest.yml
             release/*.blockmap
-            release/Mimoo *.exe
-            release/Mimoo Setup *.exe
-            release/Mimoo (Dev Edition) *.exe
-            release/Mimoo (Dev Edition) Setup *.exe
+            release/Mimoo-*.exe
           generate_release_notes: true
