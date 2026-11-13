@@ -124,13 +124,10 @@ export function initAutoUpdater(
     });
   });
 
-  // Vérification silencieuse au démarrage uniquement si l'app est packagée
+  // Vérification automatique au démarrage si l'app est packagée (dépôt public : aucun jeton requis)
   if (app.isPackaged) {
     setTimeout(() => {
-      const token = settingsGetter()?.githubUpdateToken?.trim();
-      if (token) {
-        void checkForUpdates();
-      }
+      void checkForUpdates();
     }, 12_000);
   }
 }

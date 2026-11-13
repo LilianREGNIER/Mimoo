@@ -1,5 +1,8 @@
 # Changelog — Mimoo
 
+## v1.0.2
+- **Dépôt public & auto-update sans compte GitHub** : vérification automatique des mises à jour au démarrage sans aucun jeton requis.
+
 ## v1.0.1
 - **Mises à jour intégrées (`electron-updater`)** : vérification, téléchargement et installation des nouvelles versions directement depuis **Réglages → Mises à jour Mimoo** (avec prise en charge d'un jeton GitHub pour le dépôt privé).
 - **Hygiène & digestion réalistes** :
