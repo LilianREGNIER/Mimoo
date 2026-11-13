@@ -1751,7 +1751,6 @@ class DesktopPetRendererApp {
     } else if (dropType === 'fast') {
       this.animator.setState('play', 2000);
       this.animator.spawnParticles('sparkle', x, y - 15, 6);
-      this.animator.spawnDialogueProp('tennis_ball', 2000);
       const fastPhrases = [
         "Wouah, ça c'était rapide ! 💨 Atterrissage contrôlé !",
         "Vitesse maximale atteinte ! 🚀 Merci pour le voyage express !",
@@ -2004,10 +2003,9 @@ class DesktopPetRendererApp {
         durationMs: 3800,
       },
       {
-        text: 'Si tu as besoin d’une pause, je suis toujours prêt pour jouer ! 🎾',
+        text: 'Si tu as besoin d’une pause, je suis toujours prêt pour jouer ! ✨',
         animState: 'play',
-        prop: 'tennis_ball',
-        particleKind: 'tennis',
+        particleKind: 'sparkle',
         particleCount: 6,
         durationMs: 3600,
       },

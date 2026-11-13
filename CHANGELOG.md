@@ -1,5 +1,8 @@
 # Changelog — Mimoo
 
+## v1.0.3
+- **Correction balle fantôme** : suppression de l'apparition parasite de la balle de tennis lorsqu'on lance le familier sur l'écran ou lors d'un dialogue spontané.
+
 ## v1.0.2
 - **Dépôt public & auto-update sans compte GitHub** : vérification automatique des mises à jour au démarrage sans aucun jeton requis.
 
