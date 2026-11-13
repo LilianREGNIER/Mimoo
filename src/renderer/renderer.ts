@@ -296,13 +296,29 @@ class DesktopPetRendererApp {
       onFriendArrival: (friend) => {
         this.showSpeechBubble(`Un ami arrive : ${friend.name} (${friend.ownerName}) ! 👋`, 4000);
         this.refreshOnlineUI();
+        this.hitTester?.refresh();
+        this.renderFrame();
       },
-      onFriendDeparture: () => {
-        this.showSpeechBubble('Au revoir mon ami ! 👋', 2500);
+      onFriendDeparture: (friend) => {
+        this.isPlayingTogetherWithFriend = false;
+        this.showSpeechBubble(
+          friend ? `Au revoir ${friend.name} ! 👋` : 'Au revoir mon ami ! 👋',
+          2500
+        );
         this.refreshOnlineUI();
+        this.hitTester?.refresh();
+        this.renderFrame();
       },
       onPlayTogetherRequested: () => {
         this.triggerPlayTogetherAnimation();
+      },
+      onRoomStatusChanged: (status, roomCode) => {
+        if (status === 'connected' && roomCode) {
+          this.showSpeechBubble(`🌐 Connecté en direct au salon [${roomCode}] !`, 2800);
+        } else if (status === 'error' && roomCode) {
+          this.showSpeechBubble(`⚠️ Reconnexion au salon [${roomCode}]...`, 2800);
+        }
+        this.refreshOnlineUI();
       },
     });
 
@@ -319,9 +335,8 @@ class DesktopPetRendererApp {
       isPointOverMiniGameStar: (cx, cy) => this.miniGames.isPointOverStar(cx, cy),
       isSpongeModeActive: () => this.isSpongeMode,
       isPointOverFriendPet: (cx, cy) => {
-        if (!this.onlineManager.hasVisitor()) return false;
-        const dist = Math.hypot(cx - this.onlineManager.friendX, cy - this.onlineManager.friendY);
-        return dist < 45;
+        const visitors = this.onlineManager.getVisitors();
+        return visitors.some((v) => Math.hypot(cx - v.x, cy - v.y) < 48);
       },
       isBallThrowModeActive: () => this.isBallThrowMode || this.isDraggingBall,
       isPointOverBall: (cx, cy) => {
@@ -669,16 +684,19 @@ class DesktopPetRendererApp {
     }
     this.animator.setCarryingBall(this.petActor.getIsCarryingBall());
 
-    this.petActor.update(dtSeconds, { canWalk });
+    this.petActor.update(dtSeconds, { canWalk, isSleeping: pet.isSleeping });
     this.miniGames.update(dtSeconds);
 
-    // Mise à jour du pet ami en visite sur le bureau
+    // Mise à jour des pets amis en visite sur le bureau et diffusion de notre position dans le salon
     this.onlineManager.update(
       dtSeconds,
       this.isPlayingTogetherWithFriend
         ? this.petActor.x + (this.petActor.flipX ? 60 : -60)
         : null
     );
+    if (this.onlineManager.getCurrentRoomCode()) {
+      this.onlineManager.broadcastLocalState(this.buildLocalFriendProfile());
+    }
 
     this.animator.update(dtSeconds, {
       stage: pet.stage,
@@ -724,17 +742,17 @@ class DesktopPetRendererApp {
       dragAngle: this.petActor.getDragAngle(),
     });
 
-    // Rendu du pet ami en visite sur le bureau
-    const visitor = this.onlineManager.getVisitor();
-    if (visitor) {
+    // Rendu des pets amis en visite sur le bureau (salon temps réel, passeport ou compagnon simulé)
+    for (const visitorRuntime of this.onlineManager.getVisitors()) {
+      const visitor = visitorRuntime.profile;
       this.animator.render({
         ctx: this.ctx,
         formId: visitor.formId,
-        x: this.onlineManager.friendX,
-        y: this.onlineManager.friendY,
+        x: visitorRuntime.x,
+        y: visitorRuntime.y,
         groundY: this.petActor.getGroundY(),
         scale: 1.0,
-        flipX: this.onlineManager.friendFlipX,
+        flipX: visitorRuntime.flipX,
         poopCount: 0,
         cleanliness: 100,
         cleaningProgress: 0,
@@ -746,27 +764,34 @@ class DesktopPetRendererApp {
       this.ctx.save();
       this.ctx.font = 'bold 11.5px sans-serif';
       this.ctx.textAlign = 'center';
-      const tagText = `${visitor.name} (${visitor.ownerName})`;
+      const isHoveringFriend =
+        Math.hypot(
+          this.petActor.lastCursorX - visitorRuntime.x,
+          this.petActor.lastCursorY - visitorRuntime.y
+        ) < 52;
+      const tagText = isHoveringFriend
+        ? `${visitor.name} (${visitor.ownerName}) • Clic droit 👋`
+        : `${visitor.name} (${visitor.ownerName})`;
       const textWidth = this.ctx.measureText(tagText).width;
       this.ctx.fillStyle = 'rgba(15, 23, 42, 0.78)';
       this.ctx.beginPath();
       this.ctx.roundRect
         ? this.ctx.roundRect(
-            this.onlineManager.friendX - textWidth / 2 - 8,
-            this.onlineManager.friendY - 54,
+            visitorRuntime.x - textWidth / 2 - 8,
+            visitorRuntime.y - 54,
             textWidth + 16,
             20,
             6
           )
         : this.ctx.rect(
-            this.onlineManager.friendX - textWidth / 2 - 8,
-            this.onlineManager.friendY - 54,
+            visitorRuntime.x - textWidth / 2 - 8,
+            visitorRuntime.y - 54,
             textWidth + 16,
             20
           );
       this.ctx.fill();
       this.ctx.fillStyle = '#86efac';
-      this.ctx.fillText(tagText, this.onlineManager.friendX, this.onlineManager.friendY - 40);
+      this.ctx.fillText(tagText, visitorRuntime.x, visitorRuntime.y - 40);
       this.ctx.restore();
     }
 
@@ -863,10 +888,14 @@ class DesktopPetRendererApp {
       if (
         e.button === 0 &&
         this.ballEntity.active &&
-        (this.isBallThrowMode || this.ballEntity.state === 'stopped' || this.ballEntity.state === 'ready') &&
+        (this.isBallThrowMode ||
+          this.ballEntity.state === 'stopped' ||
+          this.ballEntity.state === 'ready' ||
+          this.ballEntity.state === 'rolling') &&
         this.ballEntity.isPointInside(e.clientX, e.clientY, 26)
       ) {
         this.isDraggingBall = true;
+        this.petActor.stopFetchingBall();
         this.ballEntity.state = 'dragging';
         this.ballEntity.x = e.clientX;
         this.ballEntity.y = e.clientY;
@@ -880,7 +909,7 @@ class DesktopPetRendererApp {
         const startX = this.ballEntity.active ? this.ballEntity.x : this.petActor.x;
         const startY = this.ballEntity.active ? this.ballEntity.y : this.petActor.y - 25;
         this.ballEntity.launch(startX, startY, e.clientX, e.clientY);
-        this.petActor.startFetchingBall(e.clientX, e.clientY);
+        this.petActor.startFetchingBall(this.ballEntity.x, this.ballEntity.y);
         this.isBallThrowMode = false;
         this.ballModeBannerEl?.classList.add('hidden');
         this.hitTester.refresh();
@@ -894,11 +923,18 @@ class DesktopPetRendererApp {
       this.petActor.handlePointerDown(e.clientX, e.clientY, e.button);
     });
 
-    // Clic droit sur le familier ou l'œuf -> ouvre/ferme le HUD à tout moment
+    // Clic droit sur le familier ou l'œuf -> HUD ; clic droit sur un ami en visite -> menu Online pour jouer/renvoyer
     this.canvas.addEventListener('contextmenu', (e) => {
       if (this.petActor.containsPoint(e.clientX, e.clientY, 24)) {
         e.preventDefault();
         this.toggleHudPanel();
+      } else if (
+        this.onlineManager
+          .getVisitors()
+          .some((v) => Math.hypot(e.clientX - v.x, e.clientY - v.y) < 48)
+      ) {
+        e.preventDefault();
+        this.openOnlineModal();
       }
     });
 
@@ -906,29 +942,31 @@ class DesktopPetRendererApp {
       if (this.isDraggingBall) {
         this.isDraggingBall = false;
         const now = performance.now();
-        const recent = this.ballDragHistory.filter((p) => now - p.time <= 85);
+        const recent = this.ballDragHistory.filter((p) => now - p.time <= 120);
         const points = recent.length >= 2 ? recent : this.ballDragHistory;
         let vx = 0;
         let vy = 0;
         if (points.length >= 2) {
           const first = points[0];
           const last = points[points.length - 1];
-          const dt = Math.max(0.012, (last.time - first.time) / 1000);
-          if (now - last.time < 180) {
+          const dt = Math.max(0.016, (last.time - first.time) / 1000);
+          if (now - last.time < 220) {
             vx = (last.x - first.x) / dt;
             vy = (last.y - first.y) / dt;
           }
         }
         this.ballDragHistory = [];
 
-        // Impulsion de projection (fling power)
-        const FLING_BOOST = 1.35;
+        // Impulsion de projection vive (fling power)
+        const FLING_BOOST = 1.45;
         vx *= FLING_BOOST;
         vy *= FLING_BOOST;
 
         const speed = Math.hypot(vx, vy);
-        if (speed < 60) {
-          this.ballEntity.throw(vx * 0.4, 45);
+        if (speed < 70) {
+          // Si lâché sans élan suffisant, petit bond joueur vers l'avant
+          const forwardDir = this.ballEntity.x < window.innerWidth / 2 ? 1 : -1;
+          this.ballEntity.throw(forwardDir * 140, -220);
         } else {
           this.ballEntity.throw(vx, vy);
         }
@@ -1088,7 +1126,7 @@ class DesktopPetRendererApp {
       const input = document.getElementById('input-friend-passport') as HTMLInputElement | null;
       const code = input?.value.trim();
       if (!code) {
-        this.showSpeechBubble('Veuillez entrer un code passeport TAMA-...', 2800);
+        this.showSpeechBubble('Veuillez entrer un code passeport MIMO-...', 2800);
         return;
       }
       const imported = this.engine.importPassport(code);
@@ -1103,22 +1141,13 @@ class DesktopPetRendererApp {
 
     document.getElementById('btn-join-room')?.addEventListener('click', () => {
       const input = document.getElementById('input-room-code') as HTMLInputElement | null;
-      const roomCode = input?.value.trim() || 'PETS-1';
-      const myProfile: FriendPetProfile = {
-        id: `local-${Date.now()}`,
-        name: this.engine.getState().name,
-        ownerName: 'Moi',
-        formId: this.engine.getState().formId,
-        stage: this.engine.getState().stage,
-        lineage: this.engine.getState().lineage,
-        equippedCosmetics: this.engine.getState().equippedCosmetics,
-        happiness: this.engine.getState().needs.happiness,
-        x: this.petActor.x,
-        direction: this.petActor.flipX ? -1 : 1,
-        animationState: 'idle',
-      };
-      this.onlineManager.joinRoom(roomCode, myProfile);
-      this.showSpeechBubble(`⚡ Connecté au salon [${roomCode}] !`, 3500);
+      const roomCode = (input?.value.trim() || 'PETS-1').toUpperCase();
+      if (input) {
+        input.value = roomCode;
+      }
+      this.onlineManager.joinRoom(roomCode, this.buildLocalFriendProfile());
+      this.refreshOnlineUI();
+      this.showSpeechBubble(`⚡ Connexion au salon [${roomCode}]...`, 2800);
     });
 
     document.getElementById('btn-invite-simulated-friend')?.addEventListener('click', () => {
@@ -1128,12 +1157,11 @@ class DesktopPetRendererApp {
     });
 
     document.getElementById('btn-online-play-together')?.addEventListener('click', () => {
-      this.triggerPlayTogetherAnimation();
+      this.onlineManager.notifyPlayTogether();
     });
 
     document.getElementById('btn-online-say-goodbye')?.addEventListener('click', () => {
-      this.onlineManager.removeVisitor();
-      this.refreshOnlineUI();
+      this.dismissFriendVisitor();
     });
 
     document.getElementById('btn-action-stats')?.addEventListener('click', () => {
@@ -1335,6 +1363,17 @@ class DesktopPetRendererApp {
 
     window.petAPI?.onMusicStateChanged?.((isPlaying: boolean) => {
       this.toggleMusicMode(isPlaying);
+    });
+
+    window.petAPI?.onSettingsChanged?.((settings) => {
+      this.engine.updateSettings(settings);
+      this.petActor.setWindowJumpEnabled(settings.windowJumpEnabled ?? true);
+      this.petActor.setScales(
+        this.engine.getCurrentSpeciesForm()?.scale ?? 1,
+        settings.petScale ?? 1
+      );
+      this.syncSettingsControls();
+      this.renderFrame();
     });
 
     window.petAPI?.onPcActivityBatch?.((batch) => {
@@ -1696,7 +1735,12 @@ class DesktopPetRendererApp {
 
     const result = this.engine.toggleSleep(Date.now());
     if (result.isSleeping) {
-      this.animator.setState('sleep');
+      this.isPlayingTogetherWithFriend = false;
+      this.isBallThrowMode = false;
+      this.ballModeBannerEl?.classList.add('hidden');
+      this.petActor.stopWalking();
+      this.petActor.stopFetchingBall();
+      this.animator.forceState('sleep');
       this.animator.spawnParticles('zzz', this.petActor.x, this.petActor.y, 3);
       this.showSpeechBubble('Bonne nuit... Zzz 💤');
     } else {
@@ -2322,6 +2366,8 @@ class DesktopPetRendererApp {
     if (this.isSpongeMode) {
       this.stopSpongeMode();
     }
+    this.petActor.stopFetchingBall();
+    this.animator.setCarryingBall(false);
     this.closeAllPanels();
     this.isBallThrowMode = true;
     this.isDraggingBall = false;
@@ -2340,6 +2386,7 @@ class DesktopPetRendererApp {
     this.isDraggingBall = false;
     this.ballDragHistory = [];
     this.ballEntity.reset();
+    this.petActor.stopFetchingBall();
     this.ballModeBannerEl?.classList.add('hidden');
     this.hitTester.refresh();
   }
@@ -2693,7 +2740,7 @@ class DesktopPetRendererApp {
           const canAfford = pet.tamaCoins >= price;
           if (!canAfford) {
             buyBtn.disabled = true;
-            buyBtn.title = 'Pas assez de pièces TamaCoins !';
+            buyBtn.title = 'Pas assez de pièces MimooCoins !';
           }
           buyBtn.addEventListener('click', () => {
             const res = this.engine.buyFood(food.id);
@@ -2704,7 +2751,7 @@ class DesktopPetRendererApp {
               this.showSpeechBubble(`Acheté : 1x ${food.name} ${food.icon} ! 😋`, 2800);
               void this.persistSaveState();
             } else {
-              this.showSpeechBubble('Pas assez de pièces TamaCoins ! 🪙');
+              this.showSpeechBubble('Pas assez de pièces MimooCoins ! 🪙');
             }
           });
           actionsDiv.appendChild(buyBtn);
@@ -2799,7 +2846,7 @@ class DesktopPetRendererApp {
             const canAfford = pet.tamaCoins >= item.price;
             if (!canAfford) {
               buyBtn.disabled = true;
-              buyBtn.title = 'Pas assez de pièces TamaCoins !';
+              buyBtn.title = 'Pas assez de pièces MimooCoins !';
             }
             buyBtn.addEventListener('click', () => {
               const res = this.engine.buyCosmetic(item.id);
@@ -2810,7 +2857,7 @@ class DesktopPetRendererApp {
                 this.showSpeechBubble(`Acheté et équipé : ${item.name} ${item.icon} ! 🎉`, 3200);
                 void this.persistSaveState();
               } else {
-                this.showSpeechBubble('Pas assez de pièces TamaCoins ! 🪙');
+                this.showSpeechBubble('Pas assez de pièces MimooCoins ! 🪙');
               }
             });
             actionsDiv.appendChild(buyBtn);
@@ -2863,27 +2910,171 @@ class DesktopPetRendererApp {
     this.hitTester.refresh();
   }
 
+  private localOnlineId: string | null = null;
+
+  private getLocalOnlineId(): string {
+    if (this.localOnlineId) return this.localOnlineId;
+    try {
+      const stored = window.localStorage?.getItem('mimoo_online_client_id');
+      if (stored && stored.trim().length > 0) {
+        this.localOnlineId = stored;
+        return stored;
+      }
+      const generated = `mimoo-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 7)}`;
+      window.localStorage?.setItem('mimoo_online_client_id', generated);
+      this.localOnlineId = generated;
+      return generated;
+    } catch {
+      this.localOnlineId = `mimoo-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 7)}`;
+      return this.localOnlineId;
+    }
+  }
+
+  private buildLocalFriendProfile(): FriendPetProfile {
+    const pet = this.engine.getState();
+    const screenW = Math.max(1, window.innerWidth);
+    const normalizedX = Math.max(0.05, Math.min(0.95, this.petActor.x / screenW));
+    return {
+      id: this.getLocalOnlineId(),
+      name: pet.name,
+      ownerName: 'Ami',
+      formId: pet.formId,
+      stage: pet.stage,
+      lineage: pet.lineage,
+      equippedCosmetics: pet.equippedCosmetics,
+      happiness: pet.needs.happiness,
+      x: normalizedX,
+      direction: this.petActor.flipX ? -1 : 1,
+      animationState: this.petActor.isMoving ? 'walk' : 'idle',
+    };
+  }
+
+  public dismissFriendVisitor(): void {
+    const hadVisitor = this.onlineManager.hasVisitor();
+    const roomCode = this.onlineManager.getCurrentRoomCode();
+    if (!hadVisitor && !roomCode) {
+      this.refreshOnlineUI();
+      return;
+    }
+    this.isPlayingTogetherWithFriend = false;
+    this.onlineManager.leaveRoom(this.getLocalOnlineId());
+    if (!hadVisitor && roomCode) {
+      this.showSpeechBubble(`Salon [${roomCode}] quitté.`, 2200);
+    }
+    this.refreshOnlineUI();
+    this.hitTester.refresh();
+    this.renderFrame();
+  }
+
   public refreshOnlineUI(): void {
     const passportInput = document.getElementById('input-my-passport') as HTMLInputElement | null;
     if (passportInput) {
       passportInput.value = this.engine.exportPassport('Moi');
     }
 
-    const visitorCard = document.getElementById('online-visitor-card');
-    const visitorDetails = document.getElementById('visitor-details');
-    const visitor = this.onlineManager.getVisitor();
+    const visitors = this.onlineManager.getVisitors();
+    const roomCode = this.onlineManager.getCurrentRoomCode();
+    const roomStatus = this.onlineManager.getRoomStatus();
 
-    if (visitor && visitorCard && visitorDetails) {
+    const statusBadge = document.getElementById('online-status-badge');
+    if (statusBadge) {
+      if (roomCode) {
+        const statusSuffix =
+          roomStatus === 'connected'
+            ? 'Connecté'
+            : roomStatus === 'error'
+              ? 'Reconnexion...'
+              : 'Connexion...';
+        statusBadge.textContent = `Salon : ${roomCode} • ${statusSuffix}`;
+        statusBadge.classList.remove('online-idle-badge');
+        statusBadge.classList.add('online-active-badge');
+      } else if (visitors.length > 0) {
+        statusBadge.textContent = 'Ami en visite 🌐';
+        statusBadge.classList.remove('online-idle-badge');
+        statusBadge.classList.add('online-active-badge');
+      } else {
+        statusBadge.textContent = 'En veille';
+        statusBadge.classList.remove('online-active-badge');
+        statusBadge.classList.add('online-idle-badge');
+      }
+    }
+
+    const visitorCard = document.getElementById('online-visitor-card');
+    if (!visitorCard) {
+      return;
+    }
+
+    const playBtn = document.getElementById('btn-online-play-together');
+    const goodbyeBtn = document.getElementById('btn-online-say-goodbye');
+    const avatarEl = document.getElementById('visitor-avatar');
+    const nameEl = document.getElementById('visitor-name');
+    const ownerEl = document.getElementById('visitor-owner');
+    const cosmeticsEl = document.getElementById('visitor-cosmetics');
+
+    if (visitors.length > 0 || roomCode) {
       visitorCard.classList.remove('hidden');
-      visitorDetails.textContent = `${visitor.name} (${visitor.ownerName}) — ${visitor.formId}`;
-    } else if (visitorCard) {
+
+      if (visitors.length === 0 && roomCode) {
+        if (avatarEl) avatarEl.textContent = '🌐';
+        if (nameEl) nameEl.textContent = `Salon [${roomCode}]`;
+        if (ownerEl) ownerEl.textContent = 'Partagez ce code pour que vos amis apparaissent ici.';
+        if (cosmeticsEl) {
+          cosmeticsEl.textContent =
+            roomStatus === 'connected'
+              ? 'Connecté en direct • En attente de joueurs'
+              : 'Connexion au serveur de salon en cours...';
+        }
+        playBtn?.classList.add('hidden');
+        if (goodbyeBtn) goodbyeBtn.textContent = 'Quitter le salon 👋';
+      } else if (visitors.length === 1) {
+        const visitor = visitors[0].profile;
+        const avatarByLineage: Record<string, string> = {
+          aqua: '💧',
+          flora: '🌱',
+          ember: '🔥',
+        };
+        if (avatarEl) avatarEl.textContent = avatarByLineage[visitor.lineage] ?? '✨';
+        if (nameEl) nameEl.textContent = visitor.name;
+        if (ownerEl) ownerEl.textContent = `Compagnon de : ${visitor.ownerName}`;
+        if (cosmeticsEl) {
+          const cosmeticsCatalog = this.engine.getCosmetics();
+          const equippedIds = [
+            visitor.equippedCosmetics?.hat,
+            visitor.equippedCosmetics?.accessory,
+            visitor.equippedCosmetics?.aura,
+          ].filter((id): id is string => typeof id === 'string' && id.length > 0);
+          const cosmeticNames = equippedIds.map(
+            (id) => cosmeticsCatalog.find((c) => c.id === id)?.name ?? id
+          );
+          cosmeticsEl.textContent =
+            cosmeticNames.length > 0 ? cosmeticNames.join(' • ') : 'Aucun accessoire';
+        }
+        playBtn?.classList.remove('hidden');
+        if (playBtn) playBtn.textContent = '🎉 Faire jouer les 2 pets ensemble';
+        if (goodbyeBtn) goodbyeBtn.textContent = roomCode ? 'Quitter le salon 👋' : 'Dire au revoir 👋';
+      } else {
+        if (avatarEl) avatarEl.textContent = '👥';
+        if (nameEl) nameEl.textContent = `${visitors.length} amis présents`;
+        if (ownerEl) {
+          ownerEl.textContent = visitors
+            .map((v) => `${v.profile.name} (${v.profile.ownerName})`)
+            .join(', ');
+        }
+        if (cosmeticsEl) {
+          cosmeticsEl.textContent = roomCode ? `Salon : ${roomCode}` : 'En visite sur votre bureau';
+        }
+        playBtn?.classList.remove('hidden');
+        if (playBtn) playBtn.textContent = '🎉 Faire jouer tous les pets ensemble';
+        if (goodbyeBtn) goodbyeBtn.textContent = roomCode ? 'Quitter le salon 👋' : 'Dire au revoir 👋';
+      }
+    } else {
       visitorCard.classList.add('hidden');
     }
   }
 
   public triggerPlayTogetherAnimation(): void {
-    const visitor = this.onlineManager.getVisitor();
-    if (!visitor) {
+    const visitors = this.onlineManager.getVisitors();
+    if (visitors.length === 0) {
       this.showSpeechBubble("Aucun ami n'est en visite pour jouer ! Invitez un ami d'abord. 🌐", 3200);
       return;
     }
@@ -2894,11 +3085,17 @@ class DesktopPetRendererApp {
     this.animator.setState('happy', 3500);
     this.animator.spawnParticles('heart', this.petActor.x, this.petActor.y, 8);
     this.animator.spawnParticles('star', this.petActor.x, this.petActor.y, 8);
-    this.animator.spawnParticles('heart', this.onlineManager.friendX, this.onlineManager.friendY, 8);
-    this.animator.spawnParticles('sparkle', this.onlineManager.friendX, this.onlineManager.friendY, 8);
+    for (const v of visitors) {
+      this.animator.spawnParticles('heart', v.x, v.y, 8);
+      this.animator.spawnParticles('sparkle', v.x, v.y, 8);
+    }
 
+    const label =
+      visitors.length === 1
+        ? visitors[0].profile.name
+        : `${visitors.length} amis`;
     this.showSpeechBubble(
-      `🎉 ${this.engine.getState().name} et ${visitor.name} jouent ensemble ! (+${result.coinsEarned} 🪙)`,
+      `🎉 ${this.engine.getState().name} et ${label} jouent ensemble ! (+${result.coinsEarned} 🪙)`,
       4000
     );
     this.refreshAllPanelsUI();
@@ -3169,13 +3366,24 @@ class DesktopPetRendererApp {
     });
   }
 
-  private updateUserSetting(partial: Partial<BootstrapPayload['saveData']['settings']>): void {
+  private async updateUserSetting(
+    partial: Partial<BootstrapPayload['saveData']['settings']>
+  ): Promise<void> {
     if (partial.windowJumpEnabled !== undefined) {
       this.petActor.setWindowJumpEnabled(partial.windowJumpEnabled);
     }
     this.engine.updateSettings(partial);
-    void window.petAPI?.updateSettings(partial);
-    void this.persistSaveState();
+
+    if (window.petAPI?.updateSettings) {
+      try {
+        const synced = await window.petAPI.updateSettings(partial);
+        this.engine.updateSettings(synced);
+      } catch {
+        void this.persistSaveState();
+      }
+    } else {
+      void this.persistSaveState();
+    }
   }
 
   private showSpeechBubble(text: string, durationMs: number = 3200): void {
@@ -3582,7 +3790,7 @@ class DesktopPetRendererApp {
       this.runSandboxSimulation('boost_marathon', "⌨️ Boost marathon appliqué : +15 000 clics/touches PC & +40h !");
     });
     document.getElementById('btn-sb-add-coins')?.addEventListener('click', () => {
-      this.runSandboxSimulation('add_coins', "🪙 +1 000 TamaCoins ajoutés à votre tirelire !");
+      this.runSandboxSimulation('add_coins', "🪙 +1 000 MimooCoins ajoutés à votre tirelire !");
     });
     document.getElementById('btn-sb-jump-window')?.addEventListener('click', () => {
       const jumped = this.petActor.forcePerchOnActiveWindow();

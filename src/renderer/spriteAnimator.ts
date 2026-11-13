@@ -437,6 +437,10 @@ export class SpriteAnimator {
    */
   public forceState(newState: AnimationState): void {
     this.temporaryStateRemainingMs = 0;
+    if (newState === 'sleep') {
+      this.activeDialogueProp = null;
+      this.dialoguePropRemainingMs = 0;
+    }
     this.state = newState;
     this.frameIndex = 0;
     this.frameTimer = 0;
@@ -777,8 +781,12 @@ export class SpriteAnimator {
       const intensity = Math.min(1, this.eggShakeRemainingMs / 120);
       offsetX += Math.sin(this.totalTimeSeconds * 85) * 6.5 * intensity;
       offsetY += Math.cos(this.totalTimeSeconds * 110) * 3.5 * intensity;
-    } else if ((this.activeDialogueProp === 'dance' || this.isMusicMode) && formId !== 'egg') {
-      // Danse rythmée joyeuse : balancement gauche/droite et petits sauts en cadence
+    } else if (
+      (this.activeDialogueProp === 'dance' || this.isMusicMode) &&
+      formId !== 'egg' &&
+      this.state !== 'sleep'
+    ) {
+      // Danse rythmée joyeuse : balancement gauche/droite et petits sauts en cadence (jamais pendant le sommeil)
       offsetX += Math.sin(this.totalTimeSeconds * 16) * 5.5;
       offsetY -= Math.abs(Math.sin(this.totalTimeSeconds * 11)) * 9;
     } else if (this.state === 'need_play' && formId !== 'egg') {
@@ -954,7 +962,7 @@ export class SpriteAnimator {
     }
 
     // 5.9 Accessoires d'état persistant (Focus Pomodoro, Casque Musique, Balle de tennis rapportée)
-    if (formId !== 'egg') {
+    if (formId !== 'egg' && this.state !== 'sleep') {
       if (this.isPomodoroFocus) {
         this.renderLaptopProp(ctx, renderX, renderY, flipX);
         this.renderStudyGlassesProp(ctx, renderX, renderY, flipX);

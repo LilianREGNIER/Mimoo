@@ -34,7 +34,7 @@ export class NotificationManager {
       return false;
     }
 
-    const safeTitle = title.trim() || 'Tamagotchi Desktop Pet';
+    const safeTitle = title.trim() || 'Mimoo';
     const safeBody = body.trim();
     const cooldownKey = safeTitle.toLowerCase();
 

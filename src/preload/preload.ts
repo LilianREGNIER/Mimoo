@@ -97,6 +97,16 @@ const petAPI: PetIPCContract = {
       ipcRenderer.removeListener('pet:music-state-changed', listener);
     };
   },
+
+  onSettingsChanged(callback: (settings: UserSettings) => void): () => void {
+    const listener = (_event: IpcRendererEvent, settings: UserSettings): void => {
+      callback(settings);
+    };
+    ipcRenderer.on('pet:settings-changed', listener);
+    return () => {
+      ipcRenderer.removeListener('pet:settings-changed', listener);
+    };
+  },
 };
 
 contextBridge.exposeInMainWorld('petAPI', petAPI);

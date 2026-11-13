@@ -1,7 +1,7 @@
 {
-  "name": "tamagotchi-desktop-pet",
+  "name": "mimoo",
   "version": "1.0.0",
-  "description": "Tamagotchi Desktop Pet pour Windows 10/11",
+  "description": "Mimoo Desktop Pet pour Windows 10/11",
   "author": "DesktopPet Team",
   "main": "dist/main/main.js",
   "private": true,
@@ -20,8 +20,8 @@
     "dist:all": "node scripts/package-dual-editions.mjs"
   },
   "build": {
-    "appId": "com.tamagotchi.desktoppet",
-    "productName": "Tamagotchi Desktop Pet",
+    "appId": "com.mimoo.desktoppet",
+    "productName": "Mimoo",
     "electronDist": "node_modules/electron/dist",
     "directories": {
       "output": "release"

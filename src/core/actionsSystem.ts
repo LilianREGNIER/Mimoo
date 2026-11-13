@@ -188,6 +188,8 @@ export function feedPet(
     ...pet,
     lastUpdatedAt:
       nowMs !== undefined && Number.isFinite(nowMs) ? nowMs : pet.lastUpdatedAt,
+    needsCuddle: nextNeeds.happiness >= 95 ? false : pet.needsCuddle,
+    needsPlay: nextNeeds.happiness >= 95 ? false : pet.needsPlay,
     needs: nextNeeds,
     discoveredForms: [...pet.discoveredForms],
     position: { ...pet.position },
@@ -538,15 +540,17 @@ export function applyMiniGameResult(
   const nextHunger =
     currentHunger > 10 ? Math.max(10, clampNeed(currentHunger - hungerCost)) : currentHunger;
 
+  const nextHappiness = clampNeed(pet.needs.happiness + happinessGain);
   const updatedPet: PetState = {
     ...pet,
     lastUpdatedAt: safeNow,
     needsPlay: false,
+    needsCuddle: nextHappiness >= 95 ? false : pet.needsCuddle,
     needs: {
       ...pet.needs,
       hunger: nextHunger,
       energy: clampNeed(pet.needs.energy - energyCost),
-      happiness: clampNeed(pet.needs.happiness + happinessGain),
+      happiness: nextHappiness,
     },
     discoveredForms: [...pet.discoveredForms],
     position: { ...pet.position },
@@ -750,14 +754,14 @@ export function encodeFriendPassport(pet: PetState, ownerName?: string): string 
 
   const json = JSON.stringify(payload);
   const b64 = btoa(encodeURIComponent(json));
-  return `TAMA-${b64}`;
+  return `MIMO-${b64}`;
 }
 
 /** Alias de `encodeFriendPassport`. */
 export const exportPassportCode = encodeFriendPassport;
 
 /**
- * Décode un Code Passeport Tamagotchi (`TAMA-...`) en un `FriendPetProfile` valide,
+ * Décode un Code Passeport Mimoo (`MIMO-...`, ou ancien `TAMA-...`) en un `FriendPetProfile` valide,
  * ou retourne `null` si le code est invalide ou corrompu.
  */
 export function decodeFriendPassport(code: string): FriendPetProfile | null {
@@ -766,7 +770,8 @@ export function decodeFriendPassport(code: string): FriendPetProfile | null {
   }
 
   const trimmed = code.trim();
-  if (!trimmed.toUpperCase().startsWith('TAMA-')) {
+  const upper = trimmed.toUpperCase();
+  if (!upper.startsWith('MIMO-') && !upper.startsWith('TAMA-')) {
     return null;
   }
 

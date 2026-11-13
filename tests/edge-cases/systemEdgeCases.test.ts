@@ -121,6 +121,32 @@ describe('Cas limites système & QA (systemEdgeCases)', () => {
       const { pet: updated } = computeOfflineCatchup(pet, after20minMs, gameConfig);
       expect(updated.needs.energy).toBeCloseTo(68, 1);
     });
+
+    it('ne déclenche PAS needsCuddle à l ouverture après une absence hors-ligne si le bonheur reste élevé', () => {
+      const startMs = 1_700_000_000_000;
+      const save = createInitialSaveData('Mochi', startMs);
+      save.pet = {
+        ...createActivePet(startMs),
+        lastPettedAt: startMs,
+        needsCuddle: true, // Même si un ancien flag existait avec jauge pleine
+        needs: {
+          hunger: 98,
+          energy: 98,
+          happiness: 100,
+          cleanliness: 99,
+        },
+      };
+
+      const engine = new PetEngine(save, gameConfig, foods, species);
+      const resumeMs = startMs + 45 * 60 * 1000; // 45 min (> CUDDLE_NEGLECT_ONLINE_MS = 20 min)
+      const catchup = engine.applyOfflineCatchup(resumeMs);
+      expect(catchup.pet.needsCuddle).toBe(false);
+
+      // Premier tick en ligne juste après l ouverture de l app : ne doit pas passer triste/câlin
+      const firstOnlineTick = engine.tick(1, resumeMs + 1_000);
+      expect(firstOnlineTick.pet.needs.happiness).toBeGreaterThanOrEqual(75);
+      expect(firstOnlineTick.pet.needsCuddle).toBe(false);
+    });
   });
 
   describe('Cas limite 2 : PC en veille (suspend / resume)', () => {

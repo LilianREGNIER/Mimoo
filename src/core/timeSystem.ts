@@ -63,9 +63,19 @@ export function computeOfflineCatchup(
     { isOffline: true }
   );
 
+  const returningAfterOffline = rawElapsedMs > 60_000;
+  const keepHappyStartupCalm = returningAfterOffline && tickedPet.needs.happiness >= 75;
+
   const updatedPet: PetState = {
     ...tickedPet,
     lastUpdatedAt: safeNowMs,
+    // Évite que le temps passé app fermée déclenche immédiatement l'alerte en ligne de 20 min sans caresse
+    lastPettedAt:
+      returningAfterOffline && tickedPet.needs.happiness >= 55
+        ? safeNowMs
+        : tickedPet.lastPettedAt,
+    needsCuddle: keepHappyStartupCalm ? false : tickedPet.needsCuddle,
+    needsPlay: keepHappyStartupCalm ? false : tickedPet.needsPlay,
   };
 
   return {

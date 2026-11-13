@@ -102,7 +102,37 @@ export class BallEntity {
 
     const safeDt = Math.min(0.08, Math.max(0, dtSeconds));
     const gravity = 880; // px/s²
+    const floorY = groundY + 14;
 
+    // Si la balle est déjà au sol en roulement ou arrêtée
+    if (this.state === 'rolling' || this.state === 'stopped') {
+      this.vy = 0;
+      this.y = floorY;
+      this.x += this.vx * safeDt;
+      this.rotation += this.vx * safeDt * 0.12;
+
+      // Décélération par frottement au sol
+      this.vx *= Math.pow(0.88, safeDt * 60);
+
+      // Rebonds sur les parois latérales pendant le roulement
+      const minX = this.radius + 10;
+      const maxX = screenWidth - this.radius - 10;
+      if (this.x < minX) {
+        this.x = minX;
+        this.vx = Math.abs(this.vx) * 0.8;
+      } else if (this.x > maxX) {
+        this.x = maxX;
+        this.vx = -Math.abs(this.vx) * 0.8;
+      }
+
+      if (Math.abs(this.vx) < 14) {
+        this.vx = 0;
+        this.state = 'stopped';
+      }
+      return;
+    }
+
+    // Trajectoire balistique aérienne (state === 'flying')
     this.vy += gravity * safeDt;
     this.x += this.vx * safeDt;
     this.y += this.vy * safeDt;
@@ -111,7 +141,7 @@ export class BallEntity {
     this.rotation += this.vx * safeDt * 0.12;
 
     // Traînée visuelle
-    if (this.state === 'flying' || Math.abs(this.vx) > 30) {
+    if (Math.abs(this.vx) > 30 || Math.abs(this.vy) > 30) {
       this.trail.unshift({ x: this.x, y: this.y, alpha: 0.55 });
       if (this.trail.length > 5) {
         this.trail.pop();
@@ -122,30 +152,40 @@ export class BallEntity {
     }
     this.trail = this.trail.filter((t) => t.alpha > 0);
 
-    // Rebonds latéraux sur les bords d'écran
-    const minX = this.radius + 12;
-    const maxX = screenWidth - this.radius - 12;
+    // Rebond sur le bord supérieur de l'écran (plafond)
+    const minY = this.radius + 8;
+    if (this.y < minY) {
+      this.y = minY;
+      this.vy = Math.abs(this.vy) * 0.78;
+    }
+
+    // Rebonds latéraux sur les bords d'écran (gauche et droite)
+    const minX = this.radius + 10;
+    const maxX = screenWidth - this.radius - 10;
     if (this.x < minX) {
       this.x = minX;
-      this.vx = -this.vx * 0.65;
+      this.vx = Math.abs(this.vx) * 0.8;
     } else if (this.x > maxX) {
       this.x = maxX;
-      this.vx = -this.vx * 0.65;
+      this.vx = -Math.abs(this.vx) * 0.8;
     }
 
     // Rebond au sol
-    const floorY = groundY + 14;
     if (this.y >= floorY) {
       this.y = floorY;
-      this.vy = -this.vy * 0.62; // Restitution élastique
-      this.vx *= 0.88; // Frottement au sol
-
-      if (Math.abs(this.vy) < 40 && Math.abs(this.vx) < 28) {
+      if (Math.abs(this.vy) > 60) {
+        this.vy = -Math.abs(this.vy) * 0.72; // Restitution élastique franche
+        this.vx *= 0.9; // Léger frottement au rebond
+        this.state = 'flying';
+      } else {
         this.vy = 0;
-        this.vx = 0;
-        this.state = 'stopped';
-      } else if (Math.abs(this.vy) < 60) {
-        this.state = 'rolling';
+        this.vx *= 0.9;
+        if (Math.abs(this.vx) < 14) {
+          this.vx = 0;
+          this.state = 'stopped';
+        } else {
+          this.state = 'rolling';
+        }
       }
     }
   }

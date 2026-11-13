@@ -189,6 +189,17 @@ describe('Système de besoins (needsSystem), actions (actionsSystem) et Sandbox 
       };
       const lonelyTick = applyTickNeeds(lonelyPet, 10, gameConfig).pet;
       expect(lonelyTick.needsCuddle).toBe(true);
+
+      // Si le bonheur est rempli (>= 95%), ne réclame pas de câlins même après 20 min
+      const blissfulPet: PetState = {
+        ...lonelyPet,
+        needs: {
+          ...lonelyPet.needs,
+          happiness: 98,
+        },
+      };
+      const blissfulTick = applyTickNeeds(blissfulPet, 10, gameConfig).pet;
+      expect(blissfulTick.needsCuddle).toBe(false);
     });
 
     it('bascule correctement le sommeil (togglePetSleep) sauf pour un œuf qui reste éveillé', () => {

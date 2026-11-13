@@ -78,8 +78,8 @@ const isDevEdition = checkIsDevEdition();
 if (process.platform === 'win32') {
   app.setAppUserModelId(
     isDevEdition
-      ? 'com.tamagotchi.desktoppet.devedition'
-      : 'com.tamagotchi.desktoppet'
+      ? 'com.mimoo.desktoppet.devedition'
+      : 'com.mimoo.desktoppet'
   );
 }
 
@@ -88,6 +88,7 @@ let trayManager: TrayManager | null = null;
 let pcActivityTracker: PcActivityTracker | null = null;
 let unregisterDisplayListeners: (() => void) | null = null;
 const notificationManager = new NotificationManager();
+let lastMainSettingsUpdateAt = 0;
 
 let currentSaveData!: SaveDataV1;
 let gameConfig!: GameConfig;
@@ -132,8 +133,12 @@ function handleUpdateSettings(partial: Partial<UserSettings>): UserSettings {
 
   const { saveData: validated } = validateAndMigrateSaveData(merged, Date.now());
   currentSaveData = validated;
+  lastMainSettingsUpdateAt = Date.now();
 
-  if (currentSaveData.settings.autoStartEnabled !== previousAutoStart) {
+  if (
+    partial.autoStartEnabled !== undefined ||
+    currentSaveData.settings.autoStartEnabled !== previousAutoStart
+  ) {
     applyAutoStartSetting(currentSaveData.settings.autoStartEnabled);
   }
 
@@ -149,6 +154,10 @@ function handleUpdateSettings(partial: Partial<UserSettings>): UserSettings {
 
   saveToDiskAtomically(currentSaveData);
   trayManager?.updateFromSaveData(currentSaveData);
+
+  if (mainWindow && !mainWindow.isDestroyed() && !mainWindow.webContents.isDestroyed()) {
+    mainWindow.webContents.send('pet:settings-changed', { ...currentSaveData.settings });
+  }
 
   return { ...currentSaveData.settings };
 }
@@ -171,10 +180,17 @@ function registerIpcHandlers(): void {
   });
 
   ipcMain.handle('pet:save-state', (_event, incomingSaveData: SaveDataV1): boolean => {
+    const previousAutoStart = currentSaveData.settings.autoStartEnabled;
     const { saveData: sanitized } = validateAndMigrateSaveData(
       incomingSaveData,
       Date.now()
     );
+    // Préserve une modification récente effectuée côté Main (ex. System Tray) contre une auto-sauvegarde en vol
+    if (Date.now() - lastMainSettingsUpdateAt < 3000) {
+      sanitized.settings = { ...currentSaveData.settings };
+    } else if (sanitized.settings.autoStartEnabled !== previousAutoStart) {
+      applyAutoStartSetting(sanitized.settings.autoStartEnabled);
+    }
     currentSaveData = sanitized;
     const saved = saveToDiskAtomically(currentSaveData);
     trayManager?.updateFromSaveData(currentSaveData);

@@ -481,6 +481,8 @@ export interface PetIPCContract {
   onActiveWindowChanged?(callback: (windowInfo: ActiveWindowInfo | null) => void): () => void;
   /** Écoute les changements d'état d'écoute musicale (YouTube Music, Spotify, etc.). */
   onMusicStateChanged?(callback: (isPlaying: boolean) => void): () => void;
+  /** Écoute les mises à jour de réglages initiées côté processus principal (ex. System Tray). */
+  onSettingsChanged?(callback: (settings: UserSettings) => void): () => void;
 }
 
 declare global {

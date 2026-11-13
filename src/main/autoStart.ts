@@ -6,9 +6,34 @@ import { app } from 'electron';
 
 let lastKnownAutoStartState = false;
 
+function quoteWindowsExecutablePath(exePath: string): string {
+  const trimmed = exePath.trim();
+  if (process.platform !== 'win32') {
+    return trimmed;
+  }
+  return trimmed.startsWith('"') && trimmed.endsWith('"') ? trimmed : `"${trimmed}"`;
+}
+
+function resolveAutoStartTarget(): { path: string; rawPath: string; args?: string[] } {
+  if (app.isPackaged) {
+    const portableExe = process.env.PORTABLE_EXECUTABLE_FILE?.trim();
+    const rawPath = portableExe && portableExe.length > 0 ? portableExe : process.execPath;
+    return {
+      path: quoteWindowsExecutablePath(rawPath),
+      rawPath,
+    };
+  }
+
+  return {
+    path: quoteWindowsExecutablePath(process.execPath),
+    rawPath: process.execPath,
+    args: [app.getAppPath()],
+  };
+}
+
 /**
  * Active ou désactive l'ouverture automatique de l'application à l'ouverture de session Windows.
- * Protégé par un bloc `try/catch` pour les environnements non packagés ou restreints.
+ * Utilise `PORTABLE_EXECUTABLE_FILE` pour les builds Portables et entoure le chemin de guillemets sous Windows.
  */
 export function applyAutoStartSetting(enabled: boolean): void {
   lastKnownAutoStartState = Boolean(enabled);
@@ -19,17 +44,28 @@ export function applyAutoStartSetting(enabled: boolean): void {
   }
 
   try {
-    if (app.isPackaged) {
-      app.setLoginItemSettings({
-        openAtLogin: lastKnownAutoStartState,
-        path: process.execPath,
-      });
-    } else {
-      app.setLoginItemSettings({
-        openAtLogin: lastKnownAutoStartState,
-        path: process.execPath,
-        args: [app.getAppPath()],
-      });
+    const target = resolveAutoStartTarget();
+    app.setLoginItemSettings({
+      openAtLogin: lastKnownAutoStartState,
+      path: target.path,
+      ...(target.args ? { args: target.args } : {}),
+    });
+
+    // Nettoyage d'une éventuelle ancienne entrée non-quotée ou temporaire lors de la désactivation
+    if (!lastKnownAutoStartState) {
+      if (target.rawPath !== target.path) {
+        app.setLoginItemSettings({
+          openAtLogin: false,
+          path: target.rawPath,
+          ...(target.args ? { args: target.args } : {}),
+        });
+      }
+      if (app.isPackaged && target.rawPath !== process.execPath) {
+        app.setLoginItemSettings({
+          openAtLogin: false,
+          path: process.execPath,
+        });
+      }
     }
   } catch (error) {
     console.warn(
@@ -48,11 +84,12 @@ export function getAutoStartStatus(): boolean {
   }
 
   try {
+    const target = resolveAutoStartTarget();
     const settings = app.getLoginItemSettings({
-      path: process.execPath,
-      ...(app.isPackaged ? {} : { args: [app.getAppPath()] }),
+      path: target.path,
+      ...(target.args ? { args: target.args } : {}),
     });
-    return Boolean(settings.openAtLogin);
+    return Boolean(settings.openAtLogin || settings.executableWillLaunchAtLogin);
   } catch {
     return lastKnownAutoStartState;
   }

@@ -59,7 +59,7 @@ async function packageDualEditions() {
 
     runCommand('npm run build', 'Recompilation avec le marqueur Dev Edition');
     runCommand(
-      'npx electron-builder --win --x64 -c.productName="Tamagotchi Desktop Pet (Dev Edition)" -c.appId="com.tamagotchi.desktoppet.devedition"',
+      'npx electron-builder --win --x64 -c.productName="Mimoo (Dev Edition)" -c.appId="com.mimoo.desktoppet.devedition"',
       'Empaquetage NSIS & Portable (Dev Edition)'
     );
 

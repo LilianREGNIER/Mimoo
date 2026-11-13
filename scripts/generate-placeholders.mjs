@@ -323,19 +323,10 @@ class CellPainter {
   }
 
   /**
-   * Ombre portée douce au sol sous le personnage
+   * Ombre statique désactivée : l'ombre dynamique au sol est dessinée en temps réel par SpriteAnimator
    */
-  groundShadow(cx = 16, cy = 28, rx = 8, ry = 1.8) {
-    const shadowColor = [15, 23, 42, 75];
-    for (let y = Math.floor(cy - ry - 1); y <= Math.ceil(cy + ry + 1); y++) {
-      for (let x = Math.floor(cx - rx - 1); x <= Math.ceil(cx + rx + 1); x++) {
-        const nx = (x - cx) / rx;
-        const ny = (y - cy) / ry;
-        if (nx * nx + ny * ny <= 1.0) {
-          this.dot(x, y, shadowColor);
-        }
-      }
-    }
+  groundShadow(_cx = 16, _cy = 28, _rx = 8, _ry = 1.8) {
+    // Intentionnellement vide pour éviter une double ombre sous le familier
   }
 
   /**

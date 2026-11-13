@@ -49,6 +49,7 @@ export class PetActor {
   public isHovering = false;
   public isSpongeMode = false;
   public hasActiveDemand = false;
+  private isSleepingState = false;
   public lastCursorX = -1000;
   public lastCursorY = -1000;
 
@@ -80,6 +81,7 @@ export class PetActor {
   private isCarryingBall = false;
   private ballTargetX = 0;
   private ballTargetY = 0;
+  private fetchElapsedTimer = 0;
 
   // Détection d'agitation ludique du curseur (Wiggle)
   private lastWiggleDirection = 0;
@@ -155,7 +157,7 @@ export class PetActor {
     if (win.width < 160 || win.height < 100) return false;
     const title = win.title.trim();
     if (!title || title === 'Program Manager' || title === 'Desktop') return false;
-    if (title.indexOf('Tamagotchi') >= 0) return false;
+    if (title.indexOf('Mimoo') >= 0 || title.indexOf('Tamagotchi') >= 0) return false;
     return true;
   }
 
@@ -211,6 +213,10 @@ export class PetActor {
 
   public getIsJumpingToWindow(): boolean {
     return this.isJumpingToWindow;
+  }
+
+  public getIsFetchingBall(): boolean {
+    return this.isFetchingBall;
   }
 
   public getIsCarryingBall(): boolean {
@@ -298,6 +304,7 @@ export class PetActor {
   public startFetchingBall(ballX: number, ballY: number): void {
     this.isFetchingBall = true;
     this.isCarryingBall = false;
+    this.fetchElapsedTimer = 0;
     this.ballTargetX = ballX;
     this.ballTargetY = ballY;
     this.targetX = this.clampX(ballX);
@@ -317,6 +324,7 @@ export class PetActor {
     this.isFetchingBall = false;
     this.isCarryingBall = false;
     this.targetX = null;
+    this.fetchElapsedTimer = 0;
   }
 
   public setScales(speciesScale: number, userScale: number): void {
@@ -595,7 +603,7 @@ export class PetActor {
 
     // Détection d'agitation ludique du curseur devant le familier (Wiggle)
     const distToCursor = Math.hypot(clientX - this.x, clientY - this.y);
-    if (distToCursor < 140 && !this.pointerDown && !this.hasActiveDemand) {
+    if (distToCursor < 140 && !this.pointerDown && !this.hasActiveDemand && !this.isSleepingState) {
       const now = performance.now();
       if (Math.abs(dx) > 3.5) {
         const wiggleDir = Math.sign(dx);
@@ -701,9 +709,10 @@ export class PetActor {
   /**
    * Met à jour la physique (vol balistique avec gravité, chute, rebonds et IA autonome).
    */
-  public update(dtSeconds: number, options: { canWalk: boolean }): void {
+  public update(dtSeconds: number, options: { canWalk: boolean; isSleeping?: boolean }): void {
     const safeDt = Math.min(0.1, Math.max(0, dtSeconds));
     const floorY = this.getCurrentFloorY();
+    this.isSleepingState = Boolean(options.isSleeping);
 
     // Retour progressif des dimensions de squash & stretch vers 1.0
     if (!this.isDragging) {
@@ -810,6 +819,25 @@ export class PetActor {
       return;
     }
 
+    // Immobilisation complète pendant le sommeil (aucune marche, poursuite de balle ou saut autonome)
+    if (this.isSleepingState) {
+      this.isFetchingBall = false;
+      this.isCarryingBall = false;
+      this.fetchElapsedTimer = 0;
+      this.targetX = null;
+      this.microStepRemaining = 0;
+      this.isMoving = false;
+      this.vx = 0;
+      if (this.isJumpingToWindow) {
+        this.isJumpingToWindow = false;
+        this.isAirborne = this.y < floorY;
+      }
+      if (!this.isPerchingOnWindow && !this.isAirborne && this.y !== floorY) {
+        this.y = floorY;
+      }
+      return;
+    }
+
     // 1) Saut en arc parabolique cinématique fluide vers le perchoir de la fenêtre active
     if (this.isJumpingToWindow) {
       const gravity = 980;
@@ -897,11 +925,23 @@ export class PetActor {
 
     // 4) Si le familier court chercher la balle lancée (Sprint Fetch)
     if (this.isFetchingBall) {
-      const sprintSpeed = Math.max(90, this.walkSpeed * 1.85);
+      this.fetchElapsedTimer += safeDt;
+      const sprintSpeed = Math.max(140, this.walkSpeed * 2.4);
       const diffX = this.ballTargetX - this.x;
-      const absDiff = Math.abs(diffX);
-      if (absDiff <= 16) {
-        this.x = this.ballTargetX;
+      const diffY = this.ballTargetY - this.y;
+      const absDiffX = Math.abs(diffX);
+      const absDiffY = Math.abs(diffY);
+      const distToBall = Math.hypot(diffX, diffY);
+
+      // Condition physique réelle pour attraper la balle :
+      // 1. Un délai minimum de 0.20s s'est écoulé depuis le lancer (évite l'interception instantanée dès le lâcher)
+      // 2. La balle est à portée physique directe du familier (au sol ou rase-motte, JAMAIS en altitude au-dessus)
+      const isReachable =
+        this.fetchElapsedTimer >= 0.2 &&
+        (distToBall <= 30 || (absDiffX <= 22 && absDiffY <= 32));
+
+      if (isReachable) {
+        this.x = this.clampX(this.ballTargetX);
         this.isFetchingBall = false;
         this.isCarryingBall = true;
         this.targetX = null;
@@ -909,18 +949,25 @@ export class PetActor {
         this.callbacks.onBallGrabbed?.();
         return;
       }
+
+      // Si la balle n'est pas encore attrapable (ex: elle vole haut dans les airs au-dessus de lui),
+      // le familier court en sprint vers la coordonnée X de la balle pour la suivre et se poster à sa retombée !
       const dir = Math.sign(diffX);
-      this.flipX = dir < 0;
+      if (dir !== 0) {
+        this.flipX = dir < 0;
+      }
       this.isMoving = true;
-      this.x = this.clampX(this.x + dir * Math.min(absDiff, sprintSpeed * safeDt));
+      if (absDiffX > 8) {
+        this.x = this.clampX(this.x + dir * Math.min(absDiffX, sprintSpeed * safeDt));
+      }
       return;
     }
 
     // 5) Si le familier rapporte la balle au joueur
     if (this.isCarryingBall) {
-      const sprintSpeed = Math.max(80, this.walkSpeed * 1.55);
+      const sprintSpeed = Math.max(100, this.walkSpeed * 1.85);
       const returnTargetX =
-        this.lastMouseX > 30 && this.lastMouseX < window.innerWidth - 30
+        this.lastMouseX > 40 && this.lastMouseX < window.innerWidth - 40
           ? this.lastMouseX
           : window.innerWidth * 0.5;
       const diffX = returnTargetX - this.x;
@@ -934,7 +981,9 @@ export class PetActor {
         return;
       }
       const dir = Math.sign(diffX);
-      this.flipX = dir < 0;
+      if (dir !== 0) {
+        this.flipX = dir < 0;
+      }
       this.isMoving = true;
       this.x = this.clampX(this.x + dir * Math.min(absDiff, sprintSpeed * safeDt));
       return;
@@ -943,6 +992,7 @@ export class PetActor {
     if (!options.canWalk || this.walkSpeed <= 0 || this.isSpongeMode) {
       this.isMoving = false;
       this.targetX = null;
+      this.microStepRemaining = 0;
       return;
     }
 

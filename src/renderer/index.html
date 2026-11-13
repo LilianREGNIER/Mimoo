@@ -8,9 +8,9 @@
     />
     <meta
       http-equiv="Content-Security-Policy"
-      content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:;"
+      content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; connect-src 'self' wss://broker.emqx.io:8084 wss://broker.hivemq.com:8884;"
     />
-    <title>Tamagotchi Desktop Pet</title>
+    <title>Mimoo</title>
     <link rel="stylesheet" href="./styles.css" />
   </head>
   <body>
@@ -44,7 +44,7 @@
           <span id="hud-pet-stage" class="hud-badge stage-badge">Œuf Étoilé</span>
         </div>
         <div class="hud-meta">
-          <span id="hud-coins-pill" class="hud-badge coins-badge" title="Pièces TamaCoins gagnées">
+          <span id="hud-coins-pill" class="hud-badge coins-badge" title="Pièces MimooCoins gagnées">
             🪙 <span id="hud-coins-count">100</span>
           </span>
           <button id="btn-close-hud" class="icon-close-btn" title="Fermer (Échap)">✕</button>
@@ -571,7 +571,7 @@
               ⌨️ Boost Marathon (+15 000 clics/touches PC & +40h)
             </button>
             <button type="button" id="btn-sb-add-coins" class="sandbox-btn sandbox-btn-coins">
-              🪙 +1 000 TamaCoins (Boutique)
+              🪙 +1 000 MimooCoins (Boutique)
             </button>
             <button type="button" id="btn-sb-jump-window" class="sandbox-btn">
               🐾 Sauter sur la fenêtre active
@@ -613,7 +613,7 @@
       <header class="modal-header" title="Cliquez et glissez pour déplacer la fenêtre">
         <div class="shop-title-row">
           <h2 class="modal-title">🛍️ Boutique & Épicerie</h2>
-          <span class="shop-coins-pill">🪙 <span id="shop-coins-val">100</span> TamaCoins</span>
+          <span class="shop-coins-pill">🪙 <span id="shop-coins-val">100</span> MimooCoins</span>
         </div>
         <button id="btn-close-shop" class="icon-close-btn" title="Fermer (Échap)">✕</button>
       </header>
@@ -692,7 +692,7 @@
 
         <!-- Section 1 : Mon Code Passeport -->
         <div class="online-section">
-          <h3>📋 Mon Code Passeport Tamagotchi</h3>
+          <h3>📋 Mon Code Passeport Mimoo</h3>
           <p class="online-desc">Partagez ce code avec vos amis pour qu'ils puissent recevoir votre pet chez eux !</p>
           <div class="passport-copy-row">
             <input type="text" id="input-my-passport" class="text-input" readonly />
@@ -704,7 +704,7 @@
         <div class="online-section">
           <h3>📥 Inviter le Pet d'un Ami (Code Passeport)</h3>
           <div class="passport-input-row">
-            <input type="text" id="input-friend-passport" class="text-input" placeholder="Collez le code TAMA-... ici" />
+            <input type="text" id="input-friend-passport" class="text-input" placeholder="Collez le code MIMO-... ici" />
             <button id="btn-import-friend-passport" class="action-btn-highlight">Recevoir l'Ami</button>
           </div>
         </div>

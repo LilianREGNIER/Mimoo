@@ -101,12 +101,88 @@ export function saveToDiskAtomically(saveData: SaveDataV1): boolean {
   }
 }
 
+const LEGACY_USERDATA_FOLDER_NAMES = [
+  'Mimoo',
+  'mimoo',
+  'Mimoo (Dev Edition)',
+  'Tamagotchi Desktop Pet (Dev Edition)',
+  'Tamagotchi Desktop Pet',
+  'tamagotchi-desktop-pet',
+];
+
+/**
+ * Si le dossier `userData` courant ne contient pas encore de `save.json`,
+ * recherche la sauvegarde la plus récente dans les anciens dossiers d'installation
+ * (ex. `tamagotchi-desktop-pet`, `Tamagotchi Desktop Pet`, autres éditions) et la copie automatiquement.
+ */
+function migrateLegacySaveIfNeeded(targetDir: string, nowMs: number): void {
+  const targetSavePath = path.join(targetDir, SAVE_FILE_NAME);
+  if (fs.existsSync(targetSavePath)) {
+    return;
+  }
+
+  let appDataDir = '';
+  try {
+    appDataDir = app.getPath('appData');
+  } catch {
+    return;
+  }
+
+  const normalizedTarget = path.resolve(targetDir).toLowerCase();
+  let bestCandidate: { dir: string; mtimeMs: number } | null = null;
+
+  for (const folderName of LEGACY_USERDATA_FOLDER_NAMES) {
+    const candidateDir = path.join(appDataDir, folderName);
+    if (path.resolve(candidateDir).toLowerCase() === normalizedTarget) {
+      continue;
+    }
+    const candidateSave = path.join(candidateDir, SAVE_FILE_NAME);
+    if (!fs.existsSync(candidateSave)) {
+      continue;
+    }
+    try {
+      const raw = fs.readFileSync(candidateSave, 'utf-8');
+      const check = parseSaveDataJson(raw, nowMs);
+      if (check.recoveredFromCorruption) {
+        continue;
+      }
+      const stat = fs.statSync(candidateSave);
+      if (!bestCandidate || stat.mtimeMs > bestCandidate.mtimeMs) {
+        bestCandidate = { dir: candidateDir, mtimeMs: stat.mtimeMs };
+      }
+    } catch {
+      // Ignorer un candidat illisible
+    }
+  }
+
+  if (!bestCandidate) {
+    return;
+  }
+
+  try {
+    fs.copyFileSync(
+      path.join(bestCandidate.dir, SAVE_FILE_NAME),
+      targetSavePath
+    );
+    const legacyBackup = path.join(bestCandidate.dir, BACKUP_FILE_NAME);
+    if (fs.existsSync(legacyBackup)) {
+      fs.copyFileSync(legacyBackup, path.join(targetDir, BACKUP_FILE_NAME));
+    }
+    console.info(`[storage] Sauvegarde existante migrée depuis : ${bestCandidate.dir}`);
+  } catch (error) {
+    console.warn('[storage] Échec de la migration depuis une ancienne sauvegarde :', error);
+  }
+}
+
 /**
  * Charge la sauvegarde depuis `save.json`.
  * En cas de corruption, tente une restauration depuis `save.backup.json` via `parseSaveDataJson`,
  * sinon régénère une sauvegarde saine et l'écrit immédiatement sur le disque.
  */
 export function loadSaveFromDisk(nowMs: number = Date.now()): SaveDataV1 {
+  const userDataDir = getUserDataDir();
+  migrateLegacySaveIfNeeded(userDataDir, nowMs);
+
   const savePath = getSaveFilePath();
   const backupPath = getBackupFilePath();
 
