@@ -105,9 +105,9 @@ describe('Système de besoins (needsSystem), actions (actionsSystem) et Sandbox 
       expect(updated.needs.happiness).toBeCloseTo(75, 2);
       expect(needsDelta.happiness).toBeCloseTo(-5, 2);
 
-      // cleanliness: 90 - 0.35 * 10 = 86.5
-      expect(updated.needs.cleanliness).toBeCloseTo(86.5, 2);
-      expect(needsDelta.cleanliness).toBeCloseTo(-3.5, 2);
+      // cleanliness: 90 - 0.12 * 10 = 88.8
+      expect(updated.needs.cleanliness).toBeCloseTo(88.8, 2);
+      expect(needsDelta.cleanliness).toBeCloseTo(-1.2, 2);
 
       expect(updated.ageSeconds).toBe(600);
     });
@@ -128,10 +128,10 @@ describe('Système de besoins (needsSystem), actions (actionsSystem) et Sandbox 
       const awakeTick = applyTickNeeds(awakePet, 600, gameConfig).pet;
       const asleepTick = applyTickNeeds(sleepingPet, 600, gameConfig).pet;
 
-      // En dormant (10 min) : hunger -2 (78), happiness -1 (79), cleanliness -1 (89)
+      // En dormant (10 min) : hunger -2 (78), happiness -1 (79), cleanliness -0.3 (89.7)
       expect(asleepTick.needs.hunger).toBeCloseTo(78, 2);
       expect(asleepTick.needs.happiness).toBeCloseTo(79, 2);
-      expect(asleepTick.needs.cleanliness).toBeCloseTo(89, 2);
+      expect(asleepTick.needs.cleanliness).toBeCloseTo(89.7, 2);
 
       expect(asleepTick.needs.hunger).toBeGreaterThan(awakeTick.needs.hunger);
       expect(asleepTick.needs.happiness).toBeGreaterThan(awakeTick.needs.happiness);
@@ -314,18 +314,18 @@ describe('Système de besoins (needsSystem), actions (actionsSystem) et Sandbox 
       };
 
       // 10 minutes avec 3 salissures :
-      // baisse de base = 0.35 * 10 = 3.5
-      // pénalité poop = 3 * 0.4 * 10 = 12
-      // total = 15.5 -> 60 - 15.5 = 44.5
+      // baisse de base = 0.12 * 10 = 1.2
+      // pénalité poop = 3 * 0.2 * 10 = 6
+      // total = 7.2 -> 60 - 7.2 = 52.8
       const ticked = applyTickNeeds(dirtyPet, 600, gameConfig).pet;
-      expect(ticked.needs.cleanliness).toBeCloseTo(44.5, 2);
+      expect(ticked.needs.cleanliness).toBeCloseTo(52.8, 2);
 
-      // Action cleanPet : remet poopCount à 0, ajoute +35 de propreté (44.5 + 35 = 79.5)
+      // Action cleanPet : remet poopCount à 0, ajoute +35 de propreté (52.8 + 35 = 87.8)
       const cleanedResult = cleanPet(ticked, gameConfig, 2_000_000);
       expect(cleanedResult.cleaned).toBe(true);
       expect(cleanedResult.pet.poopCount).toBe(0);
       expect(cleanedResult.pet.cleaningProgress).toBe(0);
-      expect(cleanedResult.pet.needs.cleanliness).toBeCloseTo(79.5, 2);
+      expect(cleanedResult.pet.needs.cleanliness).toBeCloseTo(87.8, 2);
       expect(cleanedResult.pet.careStats.totalCleans).toBe(1);
     });
 
@@ -379,18 +379,27 @@ describe('Système de besoins (needsSystem), actions (actionsSystem) et Sandbox 
       expect(fallbackScrub.completed).toBe(false);
     });
 
-    it('génère des salissures périodiques en ligne via PetEngine.tick (hors stade œuf et éveillé)', () => {
+    it('génère des salissures en ligne uniquement après avoir mangé (digestion) via PetEngine.tick', () => {
       const save = createInitialSaveData('Mochi', 1_000);
       save.pet.formId = 'baby_aqua';
       save.pet.stage = 'baby';
       save.pet.lineage = 'aqua';
+      save.pet.needs.hunger = 20;
+      save.pet.foodInventory = { royal_sushi: 2, apple_fresh: 2 };
 
       const engine = new PetEngine(save, gameConfig, foods, species);
-      // poopIntervalSeconds = 900s
-      const tickResult = engine.tick(1850, 1_851_000);
-      expect(tickResult.pet.poopCount).toBe(2);
+      // Sans avoir mangé, aucune salissure ne doit apparaître même après 1h
+      const emptyTick = engine.tick(3600, 3_601_000);
+      expect(emptyTick.pet.poopCount).toBe(0);
 
-      const cleanResult = engine.clean(1_852_000);
+      // On nourrit le familier (Sushi Royal +32 + Pomme +22 => digestionCharge = 1.35 >= 1)
+      engine.feed('royal_sushi', 3_602_000);
+      engine.feed('apple_fresh', 3_603_000);
+      // poopIntervalSeconds = 1800s -> 1 salissure après digestion
+      const tickResult = engine.tick(1850, 5_453_000);
+      expect(tickResult.pet.poopCount).toBe(1);
+
+      const cleanResult = engine.clean(5_453_000);
       expect(cleanResult.cleaned).toBe(true);
       expect(cleanResult.pet.poopCount).toBe(0);
     });

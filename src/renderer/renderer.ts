@@ -1318,6 +1318,73 @@ class DesktopPetRendererApp {
       }
     });
 
+    const btnCheckUpdates = document.getElementById('btn-check-updates') as HTMLButtonElement | null;
+    const btnInstallUpdate = document.getElementById('btn-install-update') as HTMLButtonElement | null;
+    const updateStatusText = document.getElementById('update-status-text');
+    const versionLabel = document.getElementById('app-version-label');
+
+    if (window.petAPI?.getAppVersion && versionLabel) {
+      void window.petAPI.getAppVersion().then((ver) => {
+        versionLabel.textContent = `v${ver}`;
+      });
+    }
+
+    const applyUpdateStatusUI = (status: {
+      state: string;
+      currentVersion: string;
+      latestVersion?: string;
+      progressPercent?: number;
+      message?: string;
+    }) => {
+      if (versionLabel && status.currentVersion) {
+        versionLabel.textContent = `v${status.currentVersion}`;
+      }
+      if (updateStatusText && status.message) {
+        updateStatusText.textContent = status.message;
+      }
+      if (btnCheckUpdates) {
+        btnCheckUpdates.disabled = status.state === 'checking' || status.state === 'downloading';
+      }
+      if (btnInstallUpdate) {
+        btnInstallUpdate.classList.toggle('hidden', status.state !== 'downloaded');
+      }
+      if (status.state === 'downloaded') {
+        this.showSpeechBubble(
+          `Mise à jour v${status.latestVersion ?? ''} prête dans Réglages ! 🚀`,
+          5000
+        );
+      }
+    };
+
+    window.petAPI?.onUpdateStatus?.((status) => {
+      applyUpdateStatusUI(status);
+    });
+
+    btnCheckUpdates?.addEventListener('click', async () => {
+      if (!window.petAPI?.checkForUpdates) return;
+      btnCheckUpdates.disabled = true;
+      if (updateStatusText) {
+        updateStatusText.textContent = 'Recherche de mise à jour sur GitHub…';
+      }
+      const res = await window.petAPI.checkForUpdates();
+      applyUpdateStatusUI(res);
+    });
+
+    btnInstallUpdate?.addEventListener('click', () => {
+      void window.petAPI?.installUpdate?.();
+    });
+
+    const githubTokenInput = document.getElementById('input-github-token') as HTMLInputElement | null;
+    const btnSaveGithubToken = document.getElementById('btn-save-github-token') as HTMLButtonElement | null;
+    btnSaveGithubToken?.addEventListener('click', () => {
+      const token = githubTokenInput?.value.trim() ?? '';
+      void this.updateUserSetting({ githubUpdateToken: token });
+      this.showSpeechBubble(
+        token ? 'Jeton GitHub enregistré ! 🔐' : 'Jeton GitHub effacé.',
+        2500
+      );
+    });
+
     document.getElementById('btn-save-name')?.addEventListener('click', () => {
       const inputEl = document.getElementById('input-pet-name') as HTMLInputElement | null;
       const newName = inputEl?.value.trim();
@@ -3357,6 +3424,11 @@ class DesktopPetRendererApp {
     const nameInputEl = document.getElementById('input-pet-name') as HTMLInputElement | null;
     if (nameInputEl) {
       nameInputEl.value = save.pet.name;
+    }
+
+    const githubTokenEl = document.getElementById('input-github-token') as HTMLInputElement | null;
+    if (githubTokenEl && settings.githubUpdateToken !== undefined) {
+      githubTokenEl.value = settings.githubUpdateToken;
     }
 
     const scaleButtons = document.querySelectorAll<HTMLButtonElement>('#scale-selector .seg-btn');

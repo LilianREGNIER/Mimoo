@@ -55,6 +55,8 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           files: |
+            release/latest.yml
+            release/*.blockmap
             release/Mimoo *.exe
             release/Mimoo Setup *.exe
             release/Mimoo (Dev Edition) *.exe

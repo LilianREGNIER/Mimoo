@@ -278,6 +278,25 @@ export interface UserSettings {
   petScale: number;
   /** Permet au familier de sauter occasionnellement sur les fenêtres actives. */
   windowJumpEnabled: boolean;
+  /** Jeton personnel GitHub optionnel pour télécharger les mises à jour d'un dépôt privé. */
+  githubUpdateToken?: string;
+}
+
+export type UpdateStatusState =
+  | 'idle'
+  | 'checking'
+  | 'available'
+  | 'not-available'
+  | 'downloading'
+  | 'downloaded'
+  | 'error';
+
+export interface UpdateStatusPayload {
+  state: UpdateStatusState;
+  currentVersion: string;
+  latestVersion?: string;
+  progressPercent?: number;
+  message?: string;
 }
 
 /** État dynamique complet du familier persisté dans la sauvegarde. */
@@ -302,6 +321,8 @@ export interface PetState {
   isSleeping: boolean;
   /** Nombre de salissures présentes autour du familier. */
   poopCount: number;
+  /** Charge de digestion accumulée en mangeant (1.0 = prête à produire une salissure après le délai). */
+  digestionCharge?: number;
   /** Progression du brossage à l'éponge en cours (0 à 100). */
   cleaningProgress: number;
   /** Indique si le familier réclame actuellement un câlin. */
@@ -483,6 +504,14 @@ export interface PetIPCContract {
   onMusicStateChanged?(callback: (isPlaying: boolean) => void): () => void;
   /** Écoute les mises à jour de réglages initiées côté processus principal (ex. System Tray). */
   onSettingsChanged?(callback: (settings: UserSettings) => void): () => void;
+  /** Retourne la version actuelle de l'application (ex. "1.0.0"). */
+  getAppVersion?(): Promise<string>;
+  /** Lance une vérification de mise à jour sur GitHub Releases. */
+  checkForUpdates?(): Promise<UpdateStatusPayload>;
+  /** Quitte et installe la mise à jour téléchargée. */
+  installUpdate?(): Promise<void>;
+  /** Écoute les changements d'état de l'auto-updater. */
+  onUpdateStatus?(callback: (status: UpdateStatusPayload) => void): () => void;
 }
 
 declare global {

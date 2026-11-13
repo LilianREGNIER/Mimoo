@@ -23,6 +23,12 @@ import type {
 import fs from 'node:fs';
 import path from 'node:path';
 import { applyAutoStartSetting } from './autoStart';
+import {
+  checkForUpdates,
+  getAppVersion,
+  initAutoUpdater,
+  installDownloadedUpdate,
+} from './autoUpdater';
 import { NotificationManager } from './notifications';
 import { PcActivityTracker } from './pcActivityTracker';
 import {
@@ -273,6 +279,18 @@ function registerIpcHandlers(): void {
       );
     }
   );
+
+  ipcMain.handle('pet:get-app-version', (): string => {
+    return getAppVersion();
+  });
+
+  ipcMain.handle('pet:check-updates', () => {
+    return checkForUpdates();
+  });
+
+  ipcMain.handle('pet:install-update', (): void => {
+    installDownloadedUpdate();
+  });
 }
 
 /**
@@ -449,6 +467,12 @@ if (!gotSingleInstanceLock) {
 
     // 8. Surveillance de la mise en veille / sortie de veille Windows
     registerPowerMonitorListeners();
+
+    // 8.5 Initialisation de l'auto-updater intégré (GitHub Releases)
+    initAutoUpdater(
+      () => mainWindow,
+      () => currentSaveData?.settings ?? null
+    );
 
     // 9. Mode validation automatique --smoke-test
     if (isSmokeTest) {

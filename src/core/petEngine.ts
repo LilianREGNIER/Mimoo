@@ -194,23 +194,38 @@ export class PetEngine {
 
     let nextPet = tickedPet;
 
-    // Gestion de l'apparition de salissures quand le familier est éveillé (hors stade œuf)
+    // Gestion de l'apparition de salissures liée à la digestion (uniquement si le familier a mangé)
     if (
       deltaSeconds > 0 &&
       nextPet.stage !== 'egg' &&
       !nextPet.isSleeping &&
-      this.config.poopIntervalSeconds > 0
+      this.config.poopIntervalSeconds > 0 &&
+      nextPet.poopCount < 5
     ) {
-      this.poopSecondsAccumulator += deltaSeconds;
-      const newPoops = Math.floor(
-        this.poopSecondsAccumulator / this.config.poopIntervalSeconds
-      );
-      if (newPoops > 0) {
-        this.poopSecondsAccumulator %= this.config.poopIntervalSeconds;
-        nextPet = {
-          ...nextPet,
-          poopCount: Math.min(5, nextPet.poopCount + newPoops),
-        };
+      const digestion =
+        typeof nextPet.digestionCharge === 'number' && Number.isFinite(nextPet.digestionCharge)
+          ? Math.max(0, nextPet.digestionCharge)
+          : 0;
+      if (digestion >= 1) {
+        this.poopSecondsAccumulator += deltaSeconds;
+        const possibleFromTime = Math.floor(
+          this.poopSecondsAccumulator / this.config.poopIntervalSeconds
+        );
+        const newPoops = Math.min(
+          possibleFromTime,
+          Math.floor(digestion),
+          5 - nextPet.poopCount
+        );
+        if (newPoops > 0) {
+          this.poopSecondsAccumulator %= this.config.poopIntervalSeconds;
+          nextPet = {
+            ...nextPet,
+            poopCount: Math.min(5, nextPet.poopCount + newPoops),
+            digestionCharge: Number(Math.max(0, digestion - newPoops).toFixed(3)),
+          };
+        }
+      } else {
+        this.poopSecondsAccumulator = 0;
       }
     }
 

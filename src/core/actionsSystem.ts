@@ -183,11 +183,18 @@ export function feedPet(
   };
 
   const currentCategoryCount = pet.careStats.foodCategoryCounts[food.category] ?? 0;
+  const hungerGain = Math.max(0, food.effects.hunger ?? 0);
+  const digestionGain = hungerGain > 0 ? Math.max(0.25, hungerGain / 40) : 0;
+  const currentDigestion =
+    typeof pet.digestionCharge === 'number' && Number.isFinite(pet.digestionCharge)
+      ? Math.max(0, pet.digestionCharge)
+      : 0;
 
   const updatedPet: PetState = {
     ...pet,
     lastUpdatedAt:
       nowMs !== undefined && Number.isFinite(nowMs) ? nowMs : pet.lastUpdatedAt,
+    digestionCharge: Number((currentDigestion + digestionGain).toFixed(3)),
     needsCuddle: nextNeeds.happiness >= 95 ? false : pet.needsCuddle,
     needsPlay: nextNeeds.happiness >= 95 ? false : pet.needsPlay,
     needs: nextNeeds,
@@ -534,11 +541,19 @@ export function applyMiniGameResult(
   const happinessGain = result.won ? Math.round(10 + ratio * 12) : 5;
   const energyCost = 6;
   const hungerCost = 4;
+  const cleanlinessCost =
+    result.gameId === 'rps_duel' ? 1 : result.won ? 4 : 3;
   const coinsReward = result.won ? 20 : 8;
 
   const currentHunger = clampNeed(pet.needs.hunger);
   const nextHunger =
     currentHunger > 10 ? Math.max(10, clampNeed(currentHunger - hungerCost)) : currentHunger;
+
+  const currentCleanliness = clampNeed(pet.needs.cleanliness);
+  const nextCleanliness =
+    currentCleanliness > 10
+      ? Math.max(10, clampNeed(currentCleanliness - cleanlinessCost))
+      : currentCleanliness;
 
   const nextHappiness = clampNeed(pet.needs.happiness + happinessGain);
   const updatedPet: PetState = {
@@ -551,6 +566,7 @@ export function applyMiniGameResult(
       hunger: nextHunger,
       energy: clampNeed(pet.needs.energy - energyCost),
       happiness: nextHappiness,
+      cleanliness: nextCleanliness,
     },
     discoveredForms: [...pet.discoveredForms],
     position: { ...pet.position },

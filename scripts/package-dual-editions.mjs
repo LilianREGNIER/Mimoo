@@ -38,18 +38,9 @@ async function packageDualEditions() {
 
   try {
     // -------------------------------------------------------------
-    // 1) ÉDITION STANDARD / PUBLIQUE (Clean, aucun menu test)
+    // 1) ÉDITION DÉVELOPPEUR / SPÉCIALE (construite en premier pour que latest.yml reste celui de l'édition Standard)
     // -------------------------------------------------------------
-    console.log('📦 Étape 1/2 : Construction de l\'Édition Standard (Grand Public)...');
-    cleanupDevMarker();
-
-    runCommand('npm run build', 'Compilation TypeScript, Vite & Assets (Standard)');
-    runCommand('npx electron-builder --win --x64 --publish never', 'Empaquetage NSIS & Portable (Standard)');
-
-    // -------------------------------------------------------------
-    // 2) ÉDITION DÉVELOPPEUR / SPÉCIALE (Menu Test, F2, 19 formes, simulations)
-    // -------------------------------------------------------------
-    console.log('\n🧪 Étape 2/2 : Construction de l\'Édition Spéciale Développeur / Labo...');
+    console.log('🧪 Étape 1/2 : Construction de l\'Édition Spéciale Développeur / Labo...');
     const devConfig = {
       isDevEdition: true,
       buildTimestamp: new Date().toISOString(),
@@ -62,6 +53,20 @@ async function packageDualEditions() {
       'npx electron-builder --win --x64 --publish never -c.productName="Mimoo (Dev Edition)" -c.appId="com.mimoo.desktoppet.devedition"',
       'Empaquetage NSIS & Portable (Dev Edition)'
     );
+
+    const latestYmlPath = path.join(rootDir, 'release', 'latest.yml');
+    if (fs.existsSync(latestYmlPath)) {
+      fs.unlinkSync(latestYmlPath);
+    }
+
+    // -------------------------------------------------------------
+    // 2) ÉDITION STANDARD / PUBLIQUE (génère le latest.yml officiel pour l'auto-updater)
+    // -------------------------------------------------------------
+    console.log('\n📦 Étape 2/2 : Construction de l\'Édition Standard (Grand Public)...');
+    cleanupDevMarker();
+
+    runCommand('npm run build', 'Compilation TypeScript, Vite & Assets (Standard)');
+    runCommand('npx electron-builder --win --x64 --publish never', 'Empaquetage NSIS & Portable (Standard)');
 
     console.log('\n🎉 Les deux éditions ont été générées avec succès dans release/ !\n');
   } finally {

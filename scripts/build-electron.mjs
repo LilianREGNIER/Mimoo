@@ -27,7 +27,7 @@ async function buildElectron() {
     platform: 'node',
     target: 'node20',
     format: 'cjs',
-    external: ['electron'],
+    external: ['electron', 'electron-updater'],
     sourcemap: true,
     logLevel: 'info'
   };

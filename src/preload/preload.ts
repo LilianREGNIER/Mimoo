@@ -12,6 +12,7 @@ import type {
   PetIPCContract,
   SaveDataV1,
   TrayActionType,
+  UpdateStatusPayload,
   UserSettings,
 } from '../core/types';
 
@@ -105,6 +106,28 @@ const petAPI: PetIPCContract = {
     ipcRenderer.on('pet:settings-changed', listener);
     return () => {
       ipcRenderer.removeListener('pet:settings-changed', listener);
+    };
+  },
+
+  getAppVersion(): Promise<string> {
+    return ipcRenderer.invoke('pet:get-app-version');
+  },
+
+  checkForUpdates(): Promise<UpdateStatusPayload> {
+    return ipcRenderer.invoke('pet:check-updates');
+  },
+
+  installUpdate(): Promise<void> {
+    return ipcRenderer.invoke('pet:install-update');
+  },
+
+  onUpdateStatus(callback: (status: UpdateStatusPayload) => void): () => void {
+    const listener = (_event: IpcRendererEvent, status: UpdateStatusPayload): void => {
+      callback(status);
+    };
+    ipcRenderer.on('pet:update-status', listener);
+    return () => {
+      ipcRenderer.removeListener('pet:update-status', listener);
     };
   },
 };

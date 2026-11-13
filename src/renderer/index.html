@@ -388,6 +388,33 @@
             </div>
           </div>
 
+          <div class="setting-row">
+            <div class="setting-info">
+              <strong>Mises à jour Mimoo (<span id="app-version-label">v1.0.0</span>)</strong>
+              <small id="update-status-text">Récupérez les dernières nouveautés directement ici</small>
+            </div>
+            <div class="rename-group">
+              <button type="button" id="btn-check-updates" class="btn-secondary">🔄 Vérifier</button>
+              <button type="button" id="btn-install-update" class="btn-primary hidden">🚀 Installer</button>
+            </div>
+          </div>
+
+          <div class="setting-row">
+            <div class="setting-info">
+              <strong>Jeton GitHub (dépôt privé)</strong>
+              <small>Optionnel : nécessaire uniquement si le dépôt GitHub est privé</small>
+            </div>
+            <div class="rename-group">
+              <input
+                type="password"
+                id="input-github-token"
+                class="ui-input"
+                placeholder="ghp_... ou github_pat_..."
+              />
+              <button type="button" id="btn-save-github-token" class="btn-secondary">Enregistrer</button>
+            </div>
+          </div>
+
           <div class="setting-row danger-zone">
             <div class="setting-info">
               <strong>Réinitialiser l'œuf</strong>

@@ -632,6 +632,10 @@ export function validateAndMigrateSaveData(
       typeof rawSettings.windowJumpEnabled === 'boolean'
         ? rawSettings.windowJumpEnabled
         : defaultSettings.windowJumpEnabled,
+    ...(typeof rawSettings.githubUpdateToken === 'string' &&
+    rawSettings.githubUpdateToken.trim().length > 0
+      ? { githubUpdateToken: rawSettings.githubUpdateToken.trim() }
+      : {}),
   };
 
   const savedAt = sanitizeNonNegativeNumber(raw.savedAt, safeNow, warnings, 'savedAt');
@@ -650,6 +654,11 @@ export function validateAndMigrateSaveData(
       needs,
       isSleeping,
       poopCount,
+      ...(typeof rawPet.digestionCharge === 'number' &&
+      Number.isFinite(rawPet.digestionCharge) &&
+      rawPet.digestionCharge >= 0
+        ? { digestionCharge: Number(rawPet.digestionCharge.toFixed(3)) }
+        : {}),
       cleaningProgress,
       needsCuddle,
       needsPlay,

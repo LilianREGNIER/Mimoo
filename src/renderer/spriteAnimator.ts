@@ -910,7 +910,7 @@ export class SpriteAnimator {
     }
 
     // 5. Rendu visuel de la saleté directement sur le corps du familier
-    if (formId !== 'egg' && (cleanliness < 60 || poopCount > 0)) {
+    if (formId !== 'egg' && (cleanliness < 45 || poopCount >= 2)) {
       this.renderBodyDirtOverlay(
         ctx,
         renderX,
@@ -1028,7 +1028,7 @@ export class SpriteAnimator {
     poopCount: number,
     cleaningProgress: number
   ): void {
-    const cleanDeficit = cleanliness < 60 ? (60 - cleanliness) / 60 : 0;
+    const cleanDeficit = cleanliness < 45 ? (45 - cleanliness) / 45 : 0;
     const poopFactor = Math.min(1, poopCount * 0.32);
     const rawSeverity = Math.min(1, Math.max(0.38, cleanDeficit * 0.85 + poopFactor * 0.6));
     // Estompage doux et continu des taches sous l'éponge jusqu'à disparition complète à 100%
@@ -1088,8 +1088,8 @@ export class SpriteAnimator {
       ctx.stroke();
     }
 
-    // 2 à 3 petites mouches qui tourbillonnent autour du familier
-    const flyCount = cleanliness < 30 || poopCount >= 2 ? 3 : 2;
+    // 0 à 3 petites mouches qui tourbillonnent autour du familier selon le niveau de saleté
+    const flyCount = cleanliness < 25 || poopCount >= 3 ? 3 : cleanliness < 40 || poopCount >= 2 ? 2 : 0;
     for (let i = 0; i < flyCount; i++) {
       const angle = this.totalTimeSeconds * (4.2 + i * 0.7) + i * 2.1;
       const flyX = centerX + Math.cos(angle) * (halfSize * 0.75);
