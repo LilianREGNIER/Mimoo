@@ -8,6 +8,18 @@
  */
 
 import type { AnimationState, FormId, StageId } from '../core/types';
+import spritesManifestJson from '../../assets/sprites/sprites-manifest.json';
+
+interface FrameAnchor {
+  eyeX: number;
+  eyeY: number;
+  eyeSpan: number;
+  headX: number;
+  headY: number;
+}
+
+const FRAME_ANCHORS: Partial<Record<FormId, FrameAnchor[][]>> =
+  (spritesManifestJson as unknown as { frameAnchors?: Partial<Record<FormId, FrameAnchor[][]>> }).frameAnchors ?? {};
 
 export const SPRITE_FRAME_WIDTH = 64;
 export const SPRITE_FRAME_HEIGHT = 64;
@@ -910,16 +922,20 @@ export class SpriteAnimator {
       );
 
       // 5.5 Accessoire et Chapeau cosmétiques dessinés DANS le repère transformé du familier
-      // (suivent automatiquement les mouvements verticaux, étirements, rotations et flipX)
+      // avec suivi pixel-par-pixel de la tête et des yeux pour chaque frame d'animation.
       if (formId !== 'egg') {
-        const animBounceY =
-          this.state === 'walk' || this.state === 'play' || this.state === 'happy'
-            ? (this.frameIndex % 2 === 1 ? -1.5 * scale : 0)
-            : 0;
+        const frameAnchor = FRAME_ANCHORS[formId]?.[row]?.[col];
+        const eyeX = frameAnchor ? frameAnchor.eyeX - 16 : anchor.accOffset.x;
+        const eyeY = frameAnchor ? frameAnchor.eyeY - 16 : anchor.accOffset.y;
+        const headX = frameAnchor ? frameAnchor.headX - 16 : anchor.hatOffset.x;
+        const headY = frameAnchor ? frameAnchor.headY - 16 : anchor.hatOffset.y;
+
         if (params.equippedCosmetics?.accessory) {
-          const accLocalX = anchor.accOffset.x * pixelUnit;
-          const accLocalY = anchor.accOffset.y * pixelUnit + animBounceY;
-          const accScale = scale * (anchor.accOffset.scale ?? 1.0);
+          const accLocalX = eyeX * pixelUnit;
+          const accLocalY = eyeY * pixelUnit;
+          const accScale = frameAnchor
+            ? scale * Math.max(0.75, frameAnchor.eyeSpan / 4)
+            : scale * (anchor.accOffset.scale ?? 1.0);
           this.renderAccessoryCosmetic(
             ctx,
             accLocalX,
@@ -929,8 +945,8 @@ export class SpriteAnimator {
           );
         }
         if (params.equippedCosmetics?.hat) {
-          const hatLocalX = anchor.hatOffset.x * pixelUnit;
-          const hatLocalY = anchor.hatOffset.y * pixelUnit + animBounceY;
+          const hatLocalX = headX * pixelUnit;
+          const hatLocalY = headY * pixelUnit + (frameAnchor ? 2 * scale : 0);
           const hatScale = scale * (anchor.hatOffset.scale ?? 1.0);
           this.renderHatCosmetic(
             ctx,

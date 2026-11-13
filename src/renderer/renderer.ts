@@ -2890,7 +2890,9 @@ class DesktopPetRendererApp {
 
     const ownedCountEl = document.getElementById('shop-owned-count');
     if (ownedCountEl) {
-      ownedCountEl.textContent = String(pet.ownedCosmetics.length + totalFoodCount);
+      ownedCountEl.textContent = String(
+        pet.ownedCosmetics.length + totalFoodCount + (pet.ownedDecorations?.length ?? 0)
+      );
     }
 
     // Résumé de l'équipement actuel
@@ -3125,13 +3127,14 @@ class DesktopPetRendererApp {
     }
 
     // Décorations de bureau (panier, gamelle, plante, lampe)
-    if (
-      (this.currentShopCategory === 'all' || this.currentShopCategory === 'decor') &&
-      this.currentShopTab === 'market'
-    ) {
+    if (this.currentShopCategory === 'all' || this.currentShopCategory === 'decor') {
       const ownedDecor = pet.ownedDecorations ?? [];
       const placedDecor = pet.placedDecorations ?? [];
-      for (const dec of this.decorationsCatalog) {
+      const decorationsToDisplay =
+        this.currentShopTab === 'inventory'
+          ? this.decorationsCatalog.filter((d) => ownedDecor.includes(d.id))
+          : this.decorationsCatalog;
+      for (const dec of decorationsToDisplay) {
         const isOwned = ownedDecor.includes(dec.id);
         const isPlaced = placedDecor.some((p) => p.id === dec.id);
 

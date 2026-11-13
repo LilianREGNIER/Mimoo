@@ -200,6 +200,42 @@ class CellPainter {
     this.originY = row * cellSize;
     this.scale = pixelScale;
     this.gridSize = cellSize / pixelScale; // 32x32
+    this.eyeAnchor = null;
+  }
+
+  hasPixel(lx, ly) {
+    const ix = Math.round(lx);
+    const iy = Math.round(ly);
+    if (ix < 0 || ix >= this.gridSize || iy < 0 || iy >= this.gridSize) return false;
+    const px = this.originX + ix * this.scale;
+    const py = this.originY + iy * this.scale;
+    const idx = (py * this.sheet.width + px) * 4;
+    return (this.sheet.data[idx + 3] ?? 0) > 128;
+  }
+
+  measureFrameAnchors() {
+    const eyeX = this.eyeAnchor ? this.eyeAnchor.x : 16;
+    const eyeY = this.eyeAnchor ? this.eyeAnchor.y : 15;
+    const eyeSpan = this.eyeAnchor ? this.eyeAnchor.span : 4;
+    const xMin = Math.max(0, Math.round(eyeX - 3));
+    const xMax = Math.min(this.gridSize - 1, Math.round(eyeX + 3));
+    const yLimit = Math.max(0, Math.min(this.gridSize - 1, Math.round(eyeY)));
+    let headY = Math.max(1, Math.round(eyeY - 6));
+    outer: for (let ly = 0; ly <= yLimit; ly++) {
+      for (let lx = xMin; lx <= xMax; lx++) {
+        if (this.hasPixel(lx, ly)) {
+          headY = ly;
+          break outer;
+        }
+      }
+    }
+    return {
+      eyeX: Number(eyeX.toFixed(2)),
+      eyeY: Number(eyeY.toFixed(2)),
+      eyeSpan,
+      headX: Number(eyeX.toFixed(2)),
+      headY,
+    };
   }
 
   dot(lx, ly, color) {
@@ -383,6 +419,7 @@ class CellPainter {
     const cheekColor = options.cheekColor === undefined ? '#FF7EB6' : options.cheekColor;
     const mouthColor = options.mouthColor || '#9E2A47';
     const eyeSpan = options.eyeSpan ?? 4;
+    this.eyeAnchor = { x: cx, y: cy, span: eyeSpan };
     const eyeStyle = options.eyeStyle || 'normal';
     const mouthStyle = options.mouthStyle || 'normal';
 
@@ -2102,15 +2139,19 @@ const FORM_DRAWERS = {
 function generateFormSpritesheet(formId, drawFn) {
   const sheet = new PixelCanvas(256, 512); // 4 colonnes * 64px, 8 lignes * 64px
 
+  const anchors = [];
   for (let row = 0; row < ROW_STATES.length; row++) {
     const state = ROW_STATES[row];
+    const rowAnchors = [];
     for (let col = 0; col < 4; col++) {
       const cell = new CellPainter(sheet, col, row, 64, 2);
       drawFn(cell, state, col);
+      rowAnchors.push(cell.measureFrameAnchors());
     }
+    anchors.push(rowAnchors);
   }
 
-  return sheet.toPNG();
+  return { png: sheet.toPNG(), anchors };
 }
 
 /**
@@ -2181,10 +2222,12 @@ function main() {
     { id: 'adult_ember_eclipse', stage: 'adult', stageIndex: 3, lineage: 'ember', bodyArchetype: 'phantom_bat', name: 'Éclipse Nocturne' },
   ];
 
-  // 1. Générer les 19 spritesheets PNG (256x512)
+  // 1. Générer les 19 spritesheets PNG (256x512) et collecter les ancres exactes par frame
+  const frameAnchors = {};
   for (const form of formsMeta) {
     const drawFn = FORM_DRAWERS[form.id];
-    const pngBuf = generateFormSpritesheet(form.id, drawFn);
+    const { png: pngBuf, anchors } = generateFormSpritesheet(form.id, drawFn);
+    frameAnchors[form.id] = anchors;
     const outPath = path.join(SPRITES_DIR, `${form.id}.png`);
     fs.writeFileSync(outPath, pngBuf);
     console.log(`[OK] Spritesheet générée : assets/sprites/${form.id}.png [archetype=${form.bodyArchetype}] (${pngBuf.length} octets)`);
@@ -2220,6 +2263,7 @@ function main() {
       path: `assets/sprites/${f.id}.png`,
     })),
     sprites: spritesMap,
+    frameAnchors,
   };
 
   const manifestPath = path.join(SPRITES_DIR, 'sprites-manifest.json');
