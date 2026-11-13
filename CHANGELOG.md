@@ -1,5 +1,8 @@
 # Changelog — Mimoo
 
+## v1.0.7
+- **Multi-écrans (perchoir sur fenêtres)** : correction de la détection de fenêtre active (`isValidPerchWindow`) pour ignorer les fenêtres situées sur un autre moniteur (ex. écran du dessous).
+
 ## v1.0.6
 - **Silence total** : suppression complète de tous les bruitages dans l'application.
 - **Décorations interactives et déplaçables** :

@@ -155,6 +155,12 @@ export class PetActor {
   public isValidPerchWindow(win: ActiveWindowInfo | null): boolean {
     if (!win) return false;
     if (win.width < 160 || win.height < 100) return false;
+    // Vérifie que la barre de titre de la fenêtre est réellement visible sur l'écran actif du familier
+    const screenW = typeof window !== 'undefined' ? window.innerWidth : 1920;
+    const screenH = typeof window !== 'undefined' ? window.innerHeight : 1080;
+    if (win.y < 20 || win.y > screenH - 95) return false;
+    const visibleWidth = Math.min(win.x + win.width, screenW) - Math.max(win.x, 0);
+    if (visibleWidth < 120) return false;
     const title = win.title.trim();
     if (!title || title === 'Program Manager' || title === 'Desktop') return false;
     if (title.indexOf('Mimoo') >= 0 || title.indexOf('Tamagotchi') >= 0) return false;
@@ -176,8 +182,8 @@ export class PetActor {
         this.x = Math.round(info.x + this.perchOffsetX);
         this.y = this.getPerchY(info);
       }
-    } else if (!info) {
-      // Ne réinitialise pas brutalement pour laisser le temps au familier de terminer son action
+    } else {
+      this.activeWindow = null;
       if (this.isPerchingOnWindow) {
         this.hopDownFromWindow();
       }
