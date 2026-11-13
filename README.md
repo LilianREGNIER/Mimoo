@@ -1,4 +1,4 @@
-# Tamagotchi Desktop Pet (Windows 10/11)
+# Mimoo — Desktop Pet (Windows 10/11)
 
 Un compagnon virtuel vivant directement sur votre bureau Windows, toujours accessible en surimpression transparente, avec gestion complète des besoins, évolutions multiples pilotées par JSON, mini-jeux et System Tray.
 
@@ -61,7 +61,7 @@ npm.cmd run typecheck
 ```powershell
 npm.cmd run dist:win
 ```
-Les exécutables Windows (installeur NSIS `Tamagotchi Desktop Pet Setup 1.0.0.exe` et version portable `Tamagotchi Desktop Pet 1.0.0.exe`) sont générés dans le dossier `release/`.
+Les exécutables Windows (installeur NSIS `Mimoo Setup 1.0.0.exe` et version portable `Mimoo 1.0.0.exe`) sont générés dans le dossier `release/`.
 
 ---
 
@@ -71,4 +71,4 @@ Les exécutables Windows (installeur NSIS `Tamagotchi Desktop Pet Setup 1.0.0.ex
 - **Ajouter ou modifier des stades / formes d'évolution** : éditez [`data/species.json`](./data/species.json).
 - **Ajuster la vitesse de baisse des jauges ou le plancher hors-ligne** : éditez [`data/game-config.json`](./data/game-config.json).
 - **Remplacer les sprites placeholders par vos propres visuels** : consultez le guide complet [`docs/ASSETS_GUIDE.md`](./docs/ASSETS_GUIDE.md).
-- **Emplacement de la sauvegarde locale** : `%APPDATA%\tamagotchi-desktop-pet\save.json` (avec backup automatique `save.backup.json`).
+- **Emplacement de la sauvegarde locale** : `%APPDATA%\mimoo\save.json` (avec backup automatique `save.backup.json`).
